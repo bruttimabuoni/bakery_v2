@@ -1697,21 +1697,23 @@ function fetchSalesFromSheet(silent){
 
 /* ============================== INIT ============================== */
 setToday();renderAll();
-if(cfg.sheetUrl){
+function syncAll(showToast){
+  if(!cfg.sheetUrl)return;
+  if(showToast)toast('Aggiornamento in corso…');
   fetchProductsFromSheet();
   fetchSalesFromSheet(true);
   fetchBancoFromSheet(true);
   fetchOrdiniFromSheet(true);
   if(cfg.auto)syncPending(true);
+  syncBanco(true);
+  syncOrdini(true);
+  if(showToast)setTimeout(function(){toast('Dati aggiornati ✓')},2500);
 }
-setInterval(function(){if(cfg.sheetUrl&&cfg.auto&&pending().length)syncPending(true)},60000);
-setInterval(function(){if(cfg.sheetUrl)fetchProductsFromSheet()},5*60*1000);
+if(cfg.sheetUrl) syncAll(true);
+setInterval(function(){syncAll(false)},5*60*1000);
 window.addEventListener('online',function(){
-  if(cfg.sheetUrl){
-    fetchProductsFromSheet();fetchSalesFromSheet(true);
-    fetchBancoFromSheet(true);fetchOrdiniFromSheet(true);
-    if(cfg.auto)syncPending(true);
-  }
+  toast('Connessione ripristinata…');
+  setTimeout(function(){syncAll(true)},1000);
 });
 </script>
 </body>
