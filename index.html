@@ -2244,14 +2244,17 @@ function editOrdine(id){
 }
 
 function renderOrdItemsForm(){
-  var prodOpts='<option value="">— scegli prodotto —</option>'
-    +products.map(function(p){return '<option value="'+p.id+'">'+esc(p.name)+'</option>'}).join('');
-  el('ordItemsWrap').innerHTML=ordItems.map(function(it,idx){
+  var dlId='ordProdList';
+  var datalist='<datalist id="'+dlId+'">'
+    +products.map(function(p){return '<option value="'+esc(p.name)+'">';}).join('')
+    +'</datalist>';
+  el('ordItemsWrap').innerHTML=datalist+ordItems.map(function(it,idx){
     return '<div class="ord-item-row">'
       +'<div class="field"><label>Prodotto</label>'
-      +'<select style="width:100%;border:1px solid var(--line);border-radius:11px;padding:12px;font-size:15px;background:var(--surface-2);color:var(--ink)" onchange="setOrdItemProd('+idx+',this.value)">'
-      +products.map(function(p){return '<option value="'+p.id+'"'+(p.id===it.productId?' selected':'')+'>'+esc(p.name)+'</option>'}).join('')
-      +'</select></div>'
+      +'<input list="'+dlId+'" placeholder="Nome prodotto" autocomplete="off" value="'+esc(it.name||'')+'"'
+      +' style="width:100%;padding:12px;border:1.5px solid var(--line);border-radius:11px;font-size:15px;background:var(--surface-2);color:var(--ink)"'
+      +' oninput="setOrdItemName('+idx+',this.value)">'
+      +'</div>'
       +'<div class="field qty"><label>Pz</label><input class="banco-input" style="width:100%" type="number" min="1" step="1" value="'+it.qty+'" oninput="setOrdItemQty('+idx+',this.value)"></div>'
       +'<button onclick="removeOrdItem('+idx+')" title="Rimuovi">×</button>'
       +'</div>'
@@ -2259,18 +2262,22 @@ function renderOrdItemsForm(){
   }).join('');
 }
 
-function addOrdItem(){ordItems.push({productId:products[0]?products[0].id:'',name:products[0]?products[0].name:'',qty:1,note:''});renderOrdItemsForm()}
-function removeOrdItem(i){if(ordItems.length>1)ordItems.splice(i,1);renderOrdItemsForm()}
-function setOrdItemProd(i,pid){var p=products.find(function(x){return x.id===pid});if(p){ordItems[i].productId=p.id;ordItems[i].name=p.name;}}
-function setOrdItemQty(i,v){ordItems[i].qty=parseInt(v)||1}
-function setOrdItemNote(i,v){ordItems[i].note=v}
+function addOrdItem(){ordItems.push({productId:'',name:'',qty:1,note:''});renderOrdItemsForm();}
+function removeOrdItem(i){if(ordItems.length>1)ordItems.splice(i,1);renderOrdItemsForm();}
+function setOrdItemName(i,v){
+  ordItems[i].name=v;
+  var p=products.find(function(x){return x.name===v;});
+  ordItems[i].productId=p?p.id:'';
+}
+function setOrdItemQty(i,v){ordItems[i].qty=parseInt(v)||1;}
+function setOrdItemNote(i,v){ordItems[i].note=v;}
 
 function saveOrdine(){
   var nome=el('oNome').value.trim();
   if(!nome){toast('Inserisci il nome del cliente');return}
   var data=el('oData').value;
   if(!data){toast('Inserisci la data di consegna');return}
-  if(!ordItems.length||!ordItems[0].productId){toast('Aggiungi almeno un prodotto');return}
+  if(!ordItems.length||!ordItems[0].name){toast('Aggiungi almeno un prodotto');return}
 
   if(ordEditId){
     var o=ordini.find(function(x){return x.id===ordEditId});
