@@ -583,6 +583,10 @@
       <label>Includi nel banco giornaliero</label>
       <div class="seg"><button id="fBancoSi" onclick="setFormBanco(true)">✓ Sì (prodotto fresco)</button><button id="fBancoNo" onclick="setFormBanco(false)">✗ No (es. bibite)</button></div>
     </div>
+    <div class="field" id="fPesoMedioField" style="display:none">
+      <label>Peso medio per pezzo <span style="font-weight:400;color:var(--ink-faint)">(grammi, es. 350)</span></label>
+      <input id="fPesoMedio" type="number" min="0" step="1" inputmode="numeric" placeholder="es. 350">
+    </div>
     <div class="field">
       <label>Giorni disponibile <span style="font-weight:400;color:var(--ink-faint)">(lascia vuoto = sempre)</span></label>
       <div class="seg" id="daysSeg">
@@ -1130,7 +1134,7 @@ function renderProdList(){
 }
 
 var editingId=null, formUnit='pz', formDays=[], formBanco=true;
-function setFormBanco(v){formBanco=v;el('fBancoSi').classList.toggle('on',v);el('fBancoNo').classList.toggle('on',!v);}
+function setFormBanco(v){formBanco=v;el('fBancoSi').classList.toggle('on',v);el('fBancoNo').classList.toggle('on',!v);el('fPesoMedioField').style.display=v?'':'none';}
 function openProdForm(id){
   editingId=id||null;
   el('repList').innerHTML=reparti().map(function(r){return '<option value="'+esc(r)+'">'}).join('');
@@ -1138,10 +1142,13 @@ function openProdForm(id){
     var p=products.find(function(x){return x.id===id});
     el('prodFormTitle').textContent='Modifica prodotto';
     el('fName').value=p.name;el('fRep').value=p.rep;el('fPrice').value=p.price>0?num(p.price,2):'';
-    setUnit(p.unit);setFormDays(p.days||[]);setFormBanco(p.banco!==false);el('delProdBtn').style.display='block';
+    setUnit(p.unit);setFormDays(p.days||[]);setFormBanco(p.banco!==false);
+    el('fPesoMedio').value=p.pesoMedio>0?p.pesoMedio:'';
+    el('delProdBtn').style.display='block';
   } else {
     el('prodFormTitle').textContent='Nuovo prodotto';
-    el('fName').value='';el('fRep').value='';el('fPrice').value='';setUnit('pz');setFormDays([]);setFormBanco(true);
+    el('fName').value='';el('fRep').value='';el('fPrice').value='';el('fPesoMedio').value='';
+    setUnit('pz');setFormDays([]);setFormBanco(true);
     el('delProdBtn').style.display='none';
   }
   openSheet('prodSheet');
@@ -1167,8 +1174,9 @@ function saveProd(){
   var price=parseFloat(el('fPrice').value.replace(',','.'))||0;
   if(!name){toast('Inserisci il nome');return}
   if(price<=0){toast('Inserisci un prezzo valido');return}
-  if(editingId){var p=products.find(function(x){return x.id===editingId});p.name=name;p.rep=rep;p.unit=formUnit;p.price=price;p.days=formDays.slice();p.banco=formBanco;}
-  else{products.push({id:uid(),name:name,rep:rep,unit:formUnit,price:price,days:formDays.slice(),banco:formBanco})}
+  var pm=parseFloat(el('fPesoMedio').value)||0;
+  if(editingId){var p=products.find(function(x){return x.id===editingId});p.name=name;p.rep=rep;p.unit=formUnit;p.price=price;p.days=formDays.slice();p.banco=formBanco;p.pesoMedio=pm;}
+  else{products.push({id:uid(),name:name,rep:rep,unit:formUnit,price:price,days:formDays.slice(),banco:formBanco,pesoMedio:pm})}
   save();closeSheets();renderProdList();renderRepChips();renderProducts();
   toast('Prodotto salvato');
   pushProductsToSheet(true);
@@ -1622,9 +1630,8 @@ var BKEY='forno_banco_v1';
 var bancoRecords = load(BKEY, []); // [{id,date,tipo:'carico'|'rimanenze',items:[{productId,name,pezzi,pesoMedio}]}]
 var bancoMode = 'carico'; // 'carico' | 'rimanenze'
 var bancoDraft = {}; // productId -> pezzi (input corrente)
-var pesoMedioCfg = load('forno_pesomedio_v1', {}); // productId -> pesoMedio (persistente)
 
-function saveBancoLocal(){lsSet(BKEY,JSON.stringify(bancoRecords));lsSet('forno_pesomedio_v1',JSON.stringify(pesoMedioCfg))}
+function saveBancoLocal(){lsSet(BKEY,JSON.stringify(bancoRecords));}
 
 function todayStr(){var d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')}
 
@@ -1658,10 +1665,10 @@ function renderBanco(){
     html+='<div class="reparto-title">'+esc(rep)+'</div>';
     inRep.forEach(function(p){
       var val = bancoDraft[p.id]!==undefined ? bancoDraft[p.id] : (existing?((existing.items.find(function(i){return i.productId===p.id})||{}).pezzi||''):'');
-      var pm = pesoMedioCfg[p.id]||'';
+      var pm = p.pesoMedio||0;
       html+='<div class="banco-row">'
         +'<div style="flex:1;min-width:0"><div class="br-name">'+esc(p.name)+'</div>'
-        +(bancoMode==='carico'?'<div class="br-sub">Peso medio: <input class="banco-input" style="width:55px;font-size:13px;padding:4px 6px" type="number" min="0" step="0.01" placeholder="kg" value="'+esc(String(pm))+'" oninput="setPesoMedio(\''+p.id+'\',this.value)" onblur="setPesoMedio(\''+p.id+'\',this.value)"> kg/pz</div>':'')
+        +(pm>0?'<div class="br-sub">'+pm+' g/pz</div>':'')
         +'</div>'
         +'<input class="banco-input" type="number" min="0" step="1" placeholder="pz" value="'+esc(String(val))+'" oninput="setBancoDraft(\''+p.id+'\',this.value)">'
         +'</div>';
@@ -1671,7 +1678,6 @@ function renderBanco(){
 }
 
 function setBancoDraft(pid,v){bancoDraft[pid]=v===''?'':parseInt(v)||0}
-function setPesoMedio(pid,v){pesoMedioCfg[pid]=parseFloat(v)||0;saveBancoLocal()}
 
 function saveBanco(){
   var today=todayStr();
@@ -1679,7 +1685,7 @@ function saveBanco(){
   products.filter(isAvailableToday).forEach(function(p){
     var v=bancoDraft[p.id];
     if(v===undefined||v==='')return;
-    items.push({productId:p.id,name:p.name,pezzi:parseInt(v)||0,pesoMedio:pesoMedioCfg[p.id]||0});
+    items.push({productId:p.id,name:p.name,pezzi:parseInt(v)||0,pesoMedio:p.pesoMedio||0});
   });
   if(!items.length){toast('Inserisci almeno un valore');return}
 
