@@ -1402,7 +1402,7 @@ function pushProductsToSheet(silent){
 /* ============================== APPS SCRIPT ============================== */
 var APPS_SCRIPT_CODE=
 "// =====================================================\n"+
-"// Forno Vendite — Apps Script  (incolla intero)\n"+
+"// Forno Vendite - Apps Script  (incolla intero)\n"+
 "// =====================================================\n"+
 "var SALES_SHEET   = 'Vendite';\n"+
 "var PRODUCTS_SHEET = 'Prodotti';\n"+
@@ -1455,7 +1455,7 @@ var APPS_SCRIPT_CODE=
 "  var sh = ss.getSheetByName(PRODUCTS_SHEET);\n"+
 "  if (!sh) {\n"+
 "    sh = ss.insertSheet(PRODUCTS_SHEET);\n"+
-"    sh.getRange(1,1,1,6).setValues([['ID','Nome','Reparto','Unità','Prezzo','Giorni (2=Mar,3=Mer,4=Gio,5=Ven,6=Sab)']]);\n"+
+"    sh.getRange(1,1,1,6).setValues([['ID','Nome','Reparto','Unita','Prezzo','Giorni (2=Mar,3=Mer,4=Gio,5=Ven,6=Sab)']]);\n"+
 "    sh.getRange(1,1,1,6).setFontWeight('bold');\n"+
 "  }\n"+
 "  if (sh.getLastRow() > 1) sh.getRange(2, 1, sh.getLastRow()-1, 6).clearContent();\n"+
@@ -1471,7 +1471,7 @@ var APPS_SCRIPT_CODE=
 "  var sh = ss.getSheetByName(SALES_SHEET);\n"+
 "  if (!sh) {\n"+
 "    sh = ss.insertSheet(SALES_SHEET);\n"+
-"    sh.getRange(1,1,1,9).setValues([['Data','Ora','Scontrino','Reparto','Prodotto','Unità','Quantità','Prezzo','Totale riga']]);\n"+
+"    sh.getRange(1,1,1,9).setValues([['Data','Ora','Scontrino','Reparto','Prodotto','Unita','Quantita','Prezzo','Totale riga']]);\n"+
 "    sh.getRange(1,1,1,9).setFontWeight('bold');\n"+
 "  }\n"+
 "  var existingIds = {};\n"+
