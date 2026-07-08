@@ -2107,16 +2107,25 @@ function buildEscPosBytes(o){
   return out;
 }
 
+var BLE_CHUNK = 100; // byte per chunk — valore sicuro per stampanti NETUM
+var BLE_DELAY = 80;  // ms tra chunk
+
+async function sendBleChunks(char, bytes){
+  for(var i=0;i<bytes.length;i+=BLE_CHUNK){
+    if(i>0) await new Promise(function(r){setTimeout(r,BLE_DELAY)});
+    var chunk=bytes.slice(i,i+BLE_CHUNK);
+    if(char.properties.writeWithoutResponse) await char.writeValueWithoutResponse(chunk);
+    else await char.writeValue(chunk);
+  }
+}
+
 async function stampaViBle(bytes){
   // Se stampante già connessa, riusa
   if(_blePrinter&&_blePrinter.device.gatt.connected){
-    await _blePrinter.char.writeValueWithoutResponse(bytes.slice(0,512));
-    // Invia a chunk da 512 byte
-    for(var i=512;i<bytes.length;i+=512){
-      await new Promise(function(r){setTimeout(r,50)});
-      await _blePrinter.char.writeValueWithoutResponse(bytes.slice(i,i+512));
-    }
-    return true;
+    try{
+      await sendBleChunks(_blePrinter.char, bytes);
+      return true;
+    }catch(e){_blePrinter=null;}
   }
   // Richiedi dispositivo BLE
   var device;
@@ -2125,7 +2134,7 @@ async function stampaViBle(bytes){
       acceptAllDevices:true,
       optionalServices:BLE_PRINT_SERVICES
     });
-  }catch(e){return false;} // utente ha annullato
+  }catch(e){return false;}
 
   toast('Connessione stampante…');
   var server=await device.gatt.connect();
@@ -2137,24 +2146,16 @@ async function stampaViBle(bytes){
     try{chars=await services[si].getCharacteristics();}catch(e){continue;}
     for(var ci=0;ci<chars.length&&!printChar;ci++){
       var c=chars[ci];
-      if(c.properties.write||c.properties.writeWithoutResponse){
-        printChar=c;
-      }
+      if(c.properties.write||c.properties.writeWithoutResponse) printChar=c;
     }
   }
   if(!printChar){device.gatt.disconnect();return false;}
   _blePrinter={device:device,char:printChar};
 
-  // Invia a chunk da 512 byte
-  for(var i=0;i<bytes.length;i+=512){
-    if(i>0)await new Promise(function(r){setTimeout(r,50)});
-    var chunk=bytes.slice(i,i+512);
-    try{
-      if(printChar.properties.writeWithoutResponse) await printChar.writeValueWithoutResponse(chunk);
-      else await printChar.writeValue(chunk);
-    }catch(e){_blePrinter=null;return false;}
-  }
-  return true;
+  try{
+    await sendBleChunks(printChar, bytes);
+    return true;
+  }catch(e){_blePrinter=null;return false;}
 }
 
 function stampaViaPdf(o){
