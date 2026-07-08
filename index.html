@@ -300,6 +300,36 @@
   .ord-item-row .field{flex:1;margin-bottom:0}
   .ord-item-row .field.qty{flex:0 0 80px}
   .ord-item-row button{flex:0 0 34px;height:44px;border-radius:9px;border:1px solid var(--line);background:var(--surface-2);font-size:20px;cursor:pointer;color:var(--neg)}
+
+  /* B2B badge */
+  .b2b-badge{display:inline-block;font-size:10px;font-weight:800;padding:2px 7px;border-radius:6px;background:#EDE9FE;color:#5B21B6;letter-spacing:.04em;margin-left:6px;vertical-align:middle}
+  .b2c-badge{display:inline-block;font-size:10px;font-weight:800;padding:2px 7px;border-radius:6px;background:var(--pz-soft);color:var(--pz);letter-spacing:.04em;margin-left:6px;vertical-align:middle}
+  .order-card.b2b{border-left:3px solid #7C3AED}
+
+  /* Toggle lista/calendario */
+  .ord-view-toggle{display:flex;gap:8px;margin-bottom:14px}
+  .ord-view-toggle button{flex:1;padding:9px;border-radius:11px;border:1px solid var(--line);background:var(--surface-2);font-weight:700;font-size:13px;cursor:pointer;color:var(--ink-soft)}
+  .ord-view-toggle button.on{background:var(--ink);border-color:var(--ink);color:#fff}
+
+  /* Calendario ordini */
+  .cal-nav{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
+  .cal-nav button{border:none;background:none;font-size:22px;cursor:pointer;color:var(--ink);padding:4px 8px}
+  .cal-nav span{font-weight:700;font-size:16px}
+  .cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:4px}
+  .cal-dow{text-align:center;font-size:10px;font-weight:700;color:var(--ink-faint);padding:4px 0;letter-spacing:.06em;text-transform:uppercase}
+  .cal-day{min-height:52px;border-radius:10px;padding:5px 4px 4px;background:var(--surface);border:1px solid var(--line);cursor:pointer;position:relative;transition:background .1s}
+  .cal-day:active{background:var(--accent-soft)}
+  .cal-day.empty{background:transparent;border-color:transparent;cursor:default}
+  .cal-day.today{border-color:var(--accent);border-width:2px}
+  .cal-day .cal-num{font-size:12px;font-weight:700;color:var(--ink-soft);line-height:1}
+  .cal-day.today .cal-num{color:var(--accent)}
+  .cal-day .cal-dots{display:flex;flex-wrap:wrap;gap:3px;margin-top:5px}
+  .cal-dot{width:8px;height:8px;border-radius:50%}
+  .cal-dot.b2c{background:var(--pz)}
+  .cal-dot.b2b{background:#7C3AED}
+  .cal-day-detail{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:12px 14px;margin-bottom:8px}
+  .cal-day-detail h4{margin:0 0 8px;font-size:13px;font-weight:700;color:var(--ink-soft)}
+  .cal-selected{margin-top:14px}
 </style>
 </head>
 <body>
@@ -361,8 +391,11 @@
 
   <!-- ============ ORDINI ============ -->
   <section class="view" id="view-ordini">
-    <div class="ord-filter" id="ordFilter"></div>
-    <div id="ordiniList"></div>
+    <div class="ord-view-toggle">
+      <button id="ovLista" class="on" onclick="setOrdView('lista')">☰ Lista</button>
+      <button id="ovCal" onclick="setOrdView('calendario')">📅 Calendario</button>
+    </div>
+    <div id="ordViewContent"></div>
   </section>
 
   <!-- ============ DATI ============ -->
@@ -478,7 +511,10 @@
   <div class="sheet" id="ordineSheet">
     <div class="grab"></div>
     <h2 id="ordineFormTitle">Nuovo ordine</h2>
-    <div class="field"><label>Nome cliente</label><input id="oNome" placeholder="es. Mario Rossi" autocomplete="off"></div>
+    <div class="field"><label>Tipo ordine</label>
+      <div class="seg"><button id="oTipoB2c" class="on" onclick="setOrdTipo('b2c')">👤 Privato (B2C)</button><button id="oTipoB2b" onclick="setOrdTipo('b2b')">🏢 Azienda (B2B)</button></div>
+    </div>
+    <div class="field"><label>Nome cliente / azienda</label><input id="oNome" placeholder="es. Mario Rossi" autocomplete="off"></div>
     <div class="field"><label>Telefono</label><input id="oTel" type="tel" placeholder="es. 333 1234567" autocomplete="off"></div>
     <div class="field"><label>Data consegna</label><input id="oData" type="date"></div>
     <div class="field"><label>Note generali</label><input id="oNote" placeholder="es. Pagato in anticipo" autocomplete="off"></div>
@@ -1123,6 +1159,7 @@ function fetchProductsFromSheet(){
       if(!j||!j.ok||!Array.isArray(j.products))throw new Error('risposta non valida');
       var imported=j.products.map(function(p){
         var days=Array.isArray(p.days)?p.days.map(Number).filter(function(n){return n>=0&&n<=6}):[];
+        if(!days.length){var loc=products.find(function(x){return x.id===p.id});if(loc&&loc.days&&loc.days.length)days=loc.days.slice();}
         return {id:p.id||uid(),name:p.name,rep:p.rep||'Vari',unit:(p.unit==='kg'?'kg':'pz'),price:parseFloat(p.price)||0,days:days};
       }).filter(function(p){return p.name});
       if(!imported.length){updateProdSyncUI('nessun prodotto nel foglio',true);return}
@@ -1251,17 +1288,21 @@ var APPS_SCRIPT_CODE=
 "  rows.forEach(function(r) {\n"+
 "    var id = String(r[2]); if (!id) return;\n"+
 "    if (!map[id]) {\n"+
-"      // Ricava il timestamp dall'ID (formato 'x<base36timestamp>...')\n"+
-"      var ts;\n"+
-"      try { ts = new Date(parseInt(id.slice(1), 36)).toISOString(); } catch(e) { ts = new Date().toISOString(); }\n"+
-"      // Combina data (col A, oggetto Date in Sheets) e ora (col B, stringa 'HH:MM')\n"+
-"      if (r[0] instanceof Date && r[1]) {\n"+
-"        var parts = String(r[1]).split(':');\n"+
-"        var d = new Date(r[0]);\n"+
-"        d.setHours(parseInt(parts[0])||0, parseInt(parts[1])||0, 0, 0);\n"+
-"        ts = d.toISOString();\n"+
+"      var tsDate;\n"+
+"      if (r[0] instanceof Date) {\n"+
+"        tsDate = new Date(r[0]);\n"+
+"      } else {\n"+
+"        var dp = String(r[0]).split('/');\n"+
+"        tsDate = new Date(parseInt(dp[2]), parseInt(dp[1])-1, parseInt(dp[0]));\n"+
 "      }\n"+
-"      map[id] = {id:id, ts:ts, synced:true, items:[], total:0};\n"+
+"      if (r[1] && !isNaN(tsDate.getTime())) {\n"+
+"        var tp = String(r[1]).split(':');\n"+
+"        tsDate.setHours(parseInt(tp[0])||0, parseInt(tp[1])||0, 0, 0);\n"+
+"      }\n"+
+"      var ts = (!isNaN(tsDate.getTime())) ? tsDate.toISOString() : new Date().toISOString();\n"+
+"      var dataStr = r[0] instanceof Date ? Utilities.formatDate(r[0],'Europe/Rome','dd/MM/yyyy') : String(r[0]);\n"+
+"      var oraStr  = String(r[1]);\n"+
+"      map[id] = {id:id, ts:ts, data:dataStr, ora:oraStr, synced:true, items:[], total:0};\n"+
 "    }\n"+
 "    var tot = parseFloat(r[8])||0;\n"+
 "    map[id].items.push({rep:r[3], name:r[4], unit:r[5], qty:parseFloat(r[6])||0, price:parseFloat(r[7])||0, total:tot});\n"+
@@ -1317,14 +1358,14 @@ var APPS_SCRIPT_CODE=
 "  var sh = ss.getSheetByName(ORDINI_SHEET);\n"+
 "  if (!sh) {\n"+
 "    sh = ss.insertSheet(ORDINI_SHEET);\n"+
-"    sh.getRange(1,1,1,10).setValues([['ID','Data ordine','Consegna','Cliente','Telefono','Prodotto','Qty','Note prodotto','Note generali','Stato']]).setFontWeight('bold');\n"+
+"    sh.getRange(1,1,1,11).setValues([['ID','Data ordine','Consegna','Cliente','Telefono','Prodotto','Qty','Note prodotto','Note generali','Stato','Tipo']]).setFontWeight('bold');\n"+
 "  }\n"+
 "  ordini.forEach(function(o) {\n"+
 "    var all = sh.getLastRow() > 1 ? sh.getRange(2,1,sh.getLastRow()-1,1).getValues() : [];\n"+
 "    var rowIdx = -1;\n"+
 "    for (var i=0; i<all.length; i++) { if (all[i][0]===o.id) { rowIdx=i+2; break; } }\n"+
 "    var rows = o.items.map(function(it) {\n"+
-"      return [o.id, o.ts?o.ts.slice(0,10):'', o.dataConsegna, o.cliente.nome, o.cliente.tel||'', it.name, it.qty, it.note||'', o.note||'', o.stato];\n"+
+"      return [o.id, o.ts?o.ts.slice(0,10):'', o.dataConsegna, o.cliente.nome, o.cliente.tel||'', it.name, it.qty, it.note||'', o.note||'', o.stato, o.tipo||'b2c'];\n"+
 "    });\n"+
 "    if (rowIdx > 0) {\n"+
 "      // rimuovi righe vecchie e riscrivi\n"+
@@ -1333,18 +1374,21 @@ var APPS_SCRIPT_CODE=
 "      for (var i=allRows.length-1;i>=1;i--) { if (allRows[i][0]===o.id) toDelete.push(i+1); }\n"+
 "      toDelete.forEach(function(r){sh.deleteRow(r);});\n"+
 "    }\n"+
-"    if (rows.length) sh.getRange(sh.getLastRow()+1,1,rows.length,10).setValues(rows);\n"+
+"    if (rows.length) sh.getRange(sh.getLastRow()+1,1,rows.length,11).setValues(rows);\n"+
 "  });\n"+
 "}\n"+
 "function getOrdini() {\n"+
 "  var ss = SpreadsheetApp.getActiveSpreadsheet();\n"+
 "  var sh = ss.getSheetByName(ORDINI_SHEET);\n"+
 "  if (!sh || sh.getLastRow() < 2) return {ok:true, ordini:[]};\n"+
-"  var rows = sh.getRange(2,1,sh.getLastRow()-1,10).getValues();\n"+
+"  var rows = sh.getRange(2,1,sh.getLastRow()-1,11).getValues();\n"+
 "  var map = {};\n"+
 "  rows.forEach(function(r) {\n"+
 "    var id = String(r[0]); if (!id) return;\n"+
-"    if (!map[id]) map[id] = {id:id, ts:String(r[1]), dataConsegna:String(r[2]), cliente:{nome:String(r[3]),tel:String(r[4])}, items:[], note:String(r[8]), stato:String(r[9]), synced:true};\n"+
+"    if (!map[id]) {\n"+
+"      var dc = r[2] instanceof Date ? Utilities.formatDate(r[2],'Europe/Rome','yyyy-MM-dd') : String(r[2]);\n"+
+"      map[id] = {id:id, ts:String(r[1]), dataConsegna:dc, cliente:{nome:String(r[3]),tel:String(r[4])}, items:[], note:String(r[8]), stato:String(r[9]), tipo:String(r[10])||'b2c', synced:true};\n"+
+"    }\n"+
 "    map[id].items.push({name:String(r[5]), productId:'', qty:parseFloat(r[6])||1, note:String(r[7])});\n"+
 "  });\n"+
 "  return {ok:true, ordini:Object.keys(map).map(function(k){return map[k];})};\n"+
@@ -1505,49 +1549,125 @@ function fetchBancoFromSheet(silent){
 
 /* ============================== ORDINI ============================== */
 var OKEY='forno_ordini_v1';
-var ordini = load(OKEY, []); // [{id,ts,dataConsegna,cliente:{nome,tel},items:[{productId,name,qty,note}],stato,note,synced}]
+var ordini = load(OKEY, []); // [{id,ts,dataConsegna,cliente:{nome,tel},items:[{productId,name,qty,note}],stato,note,tipo,synced}]
 var ordEditId = null;
 var ordItems = []; // stato temporaneo form
+var ordTipo = 'b2c'; // stato temporaneo form
+var ordView = 'lista'; // 'lista' | 'calendario'
 
 function saveOrdiniLocal(){lsSet(OKEY,JSON.stringify(ordini))}
 
-var ordFilter='attivi'; // 'attivi' | 'tutti' | 'consegnati'
+function setOrdTipo(t){
+  ordTipo=t;
+  el('oTipoB2c').classList.toggle('on',t==='b2c');
+  el('oTipoB2b').classList.toggle('on',t==='b2b');
+}
+
+var ordFilter='attivi';
+var calYear=new Date().getFullYear(), calMonth=new Date().getMonth();
+var calSelectedDay=null;
+
+function setOrdView(v){
+  ordView=v;
+  el('ovLista').classList.toggle('on',v==='lista');
+  el('ovCal').classList.toggle('on',v==='calendario');
+  renderOrdini();
+}
+function setOrdFilter(f){ordFilter=f;renderOrdini()}
+
+function ordCardHtml(o){
+  var d=new Date(o.dataConsegna+'T00:00:00');
+  var dateFmt=d.toLocaleDateString('it-IT',{weekday:'short',day:'numeric',month:'short'});
+  var itemsHtml=o.items.map(function(i){return esc(i.qty)+' × '+esc(i.name)+(i.note?' <span style="color:var(--ink-faint)">('+esc(i.note)+')</span>':'')}).join('<br>');
+  var tipoBadge=o.tipo==='b2b'?'<span class="b2b-badge">B2B</span>':'<span class="b2c-badge">B2C</span>';
+  return '<div class="order-card'+(o.tipo==='b2b'?' b2b':'')+'">'
+    +'<div class="oc-head"><span class="oc-name">'+esc(o.cliente.nome)+tipoBadge+'</span><span class="oc-date">'+dateFmt+'</span></div>'
+    +(o.cliente.tel?'<div class="oc-phone">📞 '+esc(o.cliente.tel)+'</div>':'')
+    +'<div class="oc-items">'+itemsHtml+'</div>'
+    +(o.note?'<div style="font-size:12px;color:var(--ink-faint);margin-top:4px">'+esc(o.note)+'</div>':'')
+    +'<div class="oc-footer">'
+    +'<span class="stato-badge '+o.stato+'" onclick="avanzaStato(\''+o.id+'\')">'+o.stato+' →</span>'
+    +'<button class="btn sm ghost" onclick="editOrdine(\''+o.id+'\')">Modifica</button>'
+    +'</div></div>';
+}
 
 function renderOrdini(){
-  // filtro
+  if(ordView==='calendario'){renderCalendario();return;}
+
   var filters=[['attivi','Attivi'],['tutti','Tutti'],['consegnati','Consegnati']];
-  el('ordFilter').innerHTML=filters.map(function(f){
-    return '<button class="chip'+(ordFilter===f[0]?' on':'')+'" onclick="setOrdFilter(\''+f[0]+'\')">'+f[1]+'</button>';
-  }).join('');
+  var filtersHtml='<div class="ord-filter" style="display:flex;gap:7px;margin-bottom:14px;overflow-x:auto;padding-bottom:2px">'
+    +filters.map(function(f){return '<button class="chip'+(ordFilter===f[0]?' on':'')+'" onclick="setOrdFilter(\''+f[0]+'\')">'+f[1]+'</button>';}).join('')
+    +'</div>';
 
   var pool=ordini.slice().sort(function(a,b){return a.dataConsegna<b.dataConsegna?-1:1});
   if(ordFilter==='attivi') pool=pool.filter(function(o){return o.stato!=='consegnato'});
   if(ordFilter==='consegnati') pool=pool.filter(function(o){return o.stato==='consegnato'});
 
   if(!pool.length){
-    el('ordiniList').innerHTML='<div class="empty"><div class="big">📋</div>Nessun ordine.</div>';
+    el('ordViewContent').innerHTML=filtersHtml+'<div class="empty"><div class="big">📋</div>Nessun ordine.</div>';
     return;
   }
-
-  el('ordiniList').innerHTML=pool.map(function(o){
-    var d=new Date(o.dataConsegna+'T00:00:00');
-    var dateFmt=d.toLocaleDateString('it-IT',{weekday:'short',day:'numeric',month:'short'});
-    var itemsHtml=o.items.map(function(i){return esc(i.qty)+' × '+esc(i.name)+(i.note?' <span style="color:var(--ink-faint)">('+esc(i.note)+')</span>':'')}).join('<br>');
-    var stati=['aperto','pronto','consegnato'];
-    var nextStato=stati[(stati.indexOf(o.stato)+1)%stati.length];
-    return '<div class="order-card">'
-      +'<div class="oc-head"><span class="oc-name">'+esc(o.cliente.nome)+'</span><span class="oc-date">📅 '+dateFmt+'</span></div>'
-      +(o.cliente.tel?'<div class="oc-phone">📞 '+esc(o.cliente.tel)+'</div>':'')
-      +'<div class="oc-items">'+itemsHtml+'</div>'
-      +(o.note?'<div style="font-size:12px;color:var(--ink-faint);margin-top:4px">'+esc(o.note)+'</div>':'')
-      +'<div class="oc-footer">'
-      +'<span class="stato-badge '+o.stato+'" onclick="avanzaStato(\''+o.id+'\')">'+o.stato+'  →</span>'
-      +'<button class="btn sm ghost" onclick="editOrdine(\''+o.id+'\')">Modifica</button>'
-      +'</div></div>';
-  }).join('');
+  el('ordViewContent').innerHTML=filtersHtml+pool.map(ordCardHtml).join('');
 }
 
-function setOrdFilter(f){ordFilter=f;renderOrdini()}
+function renderCalendario(){
+  var MESI=['Gennaio','Febbraio','Marzo','Aprile','Maggio','Giugno','Luglio','Agosto','Settembre','Ottobre','Novembre','Dicembre'];
+  var GIORNI=['Lu','Ma','Me','Gi','Ve','Sa','Do'];
+  var oggi=new Date(); oggi.setHours(0,0,0,0);
+
+  // Mappa ordini attivi per giorno yyyy-MM-dd
+  var byDay={};
+  ordini.filter(function(o){return o.stato!=='consegnato'}).forEach(function(o){
+    if(!byDay[o.dataConsegna])byDay[o.dataConsegna]=[];
+    byDay[o.dataConsegna].push(o);
+  });
+
+  var firstDay=new Date(calYear,calMonth,1);
+  var daysInMonth=new Date(calYear,calMonth+1,0).getDate();
+  // Lunedì = 0
+  var startDow=(firstDay.getDay()+6)%7;
+
+  var calHtml='<div class="cal-nav">'
+    +'<button onclick="calPrev()">‹</button>'
+    +'<span>'+MESI[calMonth]+' '+calYear+'</span>'
+    +'<button onclick="calNext()">›</button>'
+    +'</div>'
+    +'<div class="cal-grid">'
+    +GIORNI.map(function(g){return '<div class="cal-dow">'+g+'</div>'}).join('');
+
+  // Celle vuote prima del primo giorno
+  for(var i=0;i<startDow;i++) calHtml+='<div class="cal-day empty"></div>';
+
+  for(var d=1;d<=daysInMonth;d++){
+    var dateStr=calYear+'-'+String(calMonth+1).padStart(2,'0')+'-'+String(d).padStart(2,'0');
+    var dayDate=new Date(calYear,calMonth,d);
+    var isToday=dayDate.getTime()===oggi.getTime();
+    var isSel=calSelectedDay===dateStr;
+    var dayOrders=byDay[dateStr]||[];
+    var dots=dayOrders.map(function(o){return '<div class="cal-dot '+(o.tipo||'b2c')+'"></div>';}).join('');
+    calHtml+='<div class="cal-day'+(isToday?' today':'')+(isSel?' on':'')+'" onclick="selectCalDay(\''+dateStr+'\')">'
+      +'<div class="cal-num">'+d+'</div>'
+      +(dots?'<div class="cal-dots">'+dots+'</div>':'')
+      +'</div>';
+  }
+  calHtml+='</div>';
+
+  // Dettaglio giorno selezionato
+  if(calSelectedDay&&byDay[calSelectedDay]&&byDay[calSelectedDay].length){
+    var selDate=new Date(calSelectedDay+'T00:00:00');
+    var selFmt=selDate.toLocaleDateString('it-IT',{weekday:'long',day:'numeric',month:'long'});
+    calHtml+='<div class="cal-selected"><div style="font-size:13px;font-weight:700;color:var(--ink-soft);margin-bottom:10px;text-transform:capitalize">'+selFmt+'</div>'
+      +byDay[calSelectedDay].map(ordCardHtml).join('')+'</div>';
+  } else if(calSelectedDay){
+    calHtml+='<div class="cal-selected"><div class="empty" style="padding:20px">Nessun ordine in questa data.</div></div>';
+  }
+
+  el('ordViewContent').innerHTML=calHtml;
+}
+
+function calPrev(){calMonth--;if(calMonth<0){calMonth=11;calYear--;}calSelectedDay=null;renderCalendario()}
+function calNext(){calMonth++;if(calMonth>11){calMonth=0;calYear++;}calSelectedDay=null;renderCalendario()}
+function selectCalDay(d){calSelectedDay=calSelectedDay===d?null:d;renderCalendario()}
 
 function avanzaStato(id){
   var o=ordini.find(function(x){return x.id===id});if(!o)return;
@@ -1562,6 +1682,7 @@ function openOrdineForm(){
   el('oNome').value='';el('oTel').value='';el('oNote').value='';
   el('oData').value=todayStr();
   el('delOrdBtn').style.display='none';
+  setOrdTipo('b2c');
   renderOrdItemsForm();
   openSheet('ordineSheet');
 }
@@ -1576,6 +1697,7 @@ function editOrdine(id){
   el('oNote').value=o.note||'';
   el('oData').value=o.dataConsegna;
   el('delOrdBtn').style.display='block';
+  setOrdTipo(o.tipo||'b2c');
   renderOrdItemsForm();
   openSheet('ordineSheet');
 }
@@ -1611,9 +1733,9 @@ function saveOrdine(){
 
   if(ordEditId){
     var o=ordini.find(function(x){return x.id===ordEditId});
-    if(o){o.cliente={nome:nome,tel:el('oTel').value.trim()};o.dataConsegna=data;o.note=el('oNote').value.trim();o.items=ordItems.slice();o.synced=false;}
+    if(o){o.cliente={nome:nome,tel:el('oTel').value.trim()};o.dataConsegna=data;o.note=el('oNote').value.trim();o.items=ordItems.slice();o.tipo=ordTipo;o.synced=false;}
   } else {
-    ordini.push({id:uid(),ts:new Date().toISOString(),dataConsegna:data,cliente:{nome:nome,tel:el('oTel').value.trim()},items:ordItems.slice(),note:el('oNote').value.trim(),stato:'aperto',synced:false});
+    ordini.push({id:uid(),ts:new Date().toISOString(),dataConsegna:data,cliente:{nome:nome,tel:el('oTel').value.trim()},items:ordItems.slice(),note:el('oNote').value.trim(),stato:'aperto',tipo:ordTipo,synced:false});
   }
   saveOrdiniLocal();closeSheets();syncOrdini(false);renderOrdini();
 }
@@ -1678,12 +1800,19 @@ function fetchSalesFromSheet(silent){
     .then(function(j){
       salesSyncing=false;
       if(!j||!j.ok||!Array.isArray(j.sales))throw new Error('risposta non valida');
-      // Unisci: mantieni quelle locali non ancora sul foglio, aggiungi quelle remote
       var remoteIds={};
       j.sales.forEach(function(s){remoteIds[s.id]=true});
       var localOnly=sales.filter(function(s){return !remoteIds[s.id]});
+      // Ricostruisce timestamp da data+ora grezzi restituiti dal foglio
+      j.sales.forEach(function(s){
+        if(s.data&&s.ora){
+          var dp=s.data.split('/');
+          var tp=s.ora.split(':');
+          var d=new Date(parseInt(dp[2]),parseInt(dp[1])-1,parseInt(dp[0]),parseInt(tp[0])||0,parseInt(tp[1])||0,0,0);
+          if(!isNaN(d.getTime()))s.ts=d.toISOString();
+        }
+      });
       sales=j.sales.concat(localOnly);
-      // Segna tutte come sincronizzate (vengono dal foglio)
       sales.forEach(function(s){s.synced=true});
       save();renderAll();
       if(!silent)toast('Vendite aggiornate dal foglio ✓ ('+j.sales.length+')');
