@@ -419,9 +419,12 @@
 
   <!-- ============ ORDINI ============ -->
   <section class="view" id="view-ordini">
-    <div class="ord-view-toggle">
-      <button id="ovLista" class="on" onclick="setOrdView('lista')">☰ Lista</button>
-      <button id="ovCal" onclick="setOrdView('calendario')">📅 Calendario</button>
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+      <div class="ord-view-toggle" style="flex:1;margin-bottom:0">
+        <button id="ovLista" class="on" onclick="setOrdView('lista')">☰ Lista</button>
+        <button id="ovCal" onclick="setOrdView('calendario')">📅 Calendario</button>
+      </div>
+      <button class="btn sm ghost" onclick="openClienteB2bForm(null)" title="Gestisci clienti B2B" style="white-space:nowrap">🏢 Clienti</button>
     </div>
     <div id="ordViewContent"></div>
   </section>
@@ -542,6 +545,17 @@
     <div class="field"><label>Tipo ordine</label>
       <div class="seg"><button id="oTipoB2c" class="on" onclick="setOrdTipo('b2c')">👤 Privato (B2C)</button><button id="oTipoB2b" onclick="setOrdTipo('b2b')">🏢 Azienda (B2B)</button></div>
     </div>
+    <!-- Selettore cliente B2B (visibile solo tipo=b2b) -->
+    <div id="b2bClientePicker" style="display:none;margin-bottom:12px">
+      <label style="font-size:12px;font-weight:700;color:var(--ink-soft);display:block;margin-bottom:6px">CLIENTE B2B</label>
+      <div style="display:flex;gap:8px;align-items:center">
+        <select id="b2bSelect" style="flex:1;padding:10px 12px;border:1.5px solid var(--line);border-radius:12px;font-size:15px;background:var(--surface);color:var(--ink)" onchange="onB2bSelect()">
+          <option value="">— Seleziona cliente —</option>
+        </select>
+        <button class="btn sm ghost" id="b2bEditBtn" onclick="editSelectedB2bClient()" title="Modifica cliente selezionato" style="display:none">✏️</button>
+        <button class="btn sm ghost" onclick="openClienteB2bForm(null)" title="Nuovo cliente B2B">+</button>
+      </div>
+    </div>
     <div class="field"><label>Nome cliente / azienda</label><input id="oNome" placeholder="es. Mario Rossi" autocomplete="off"></div>
     <div class="field"><label>Telefono</label><input id="oTel" type="tel" placeholder="es. 333 1234567" autocomplete="off"></div>
     <div class="field"><label>Data consegna</label><input id="oData" type="date"></div>
@@ -551,6 +565,19 @@
     <button class="btn ghost sm full" style="margin-bottom:14px" onclick="addOrdItem()">+ Aggiungi prodotto</button>
     <button class="btn full" onclick="saveOrdine()">Salva ordine</button>
     <button class="btn full ghost" id="delOrdBtn" style="margin-top:9px;display:none" onclick="deleteOrdine()">Elimina ordine</button>
+  </div>
+
+  <!-- Sheet gestione cliente B2B -->
+  <div class="sheet" id="clienteB2bSheet">
+    <div class="grab"></div>
+    <h2 id="clienteB2bTitle">Nuovo cliente B2B</h2>
+    <div class="field"><label>Nome / Azienda</label><input id="cbNome" placeholder="es. Ristorante Da Mario" autocomplete="off"></div>
+    <div class="field"><label>Telefono</label><input id="cbTel" type="tel" placeholder="es. 333 1234567" autocomplete="off"></div>
+    <div style="font-size:12px;font-weight:700;color:var(--ink-soft);margin-bottom:8px;margin-top:4px">PRODOTTI ABITUALI</div>
+    <div id="cbProdWrap"></div>
+    <button class="btn ghost sm full" style="margin-bottom:14px" onclick="addCbProd()">+ Aggiungi prodotto abituale</button>
+    <button class="btn full" onclick="saveClienteB2b()">Salva cliente</button>
+    <button class="btn full ghost" id="delClienteB2bBtn" style="margin-top:9px;display:none" onclick="deleteClienteB2b()">Elimina cliente</button>
   </div>
 
   <div class="sheet" id="kpSheet">
@@ -1382,10 +1409,11 @@ var APPS_SCRIPT_CODE=
 "\n"+
 "function doGet(e) {\n"+
 "  var action = e && e.parameter && e.parameter.action;\n"+
-"  if (action === 'products') return jsonResponse(getProducts());\n"+
-"  if (action === 'sales')    return jsonResponse(getSales());\n"+
-"  if (action === 'banco')    return jsonResponse(getBanco());\n"+
-"  if (action === 'ordini')   return jsonResponse(getOrdini());\n"+
+"  if (action === 'products')   return jsonResponse(getProducts());\n"+
+"  if (action === 'sales')      return jsonResponse(getSales());\n"+
+"  if (action === 'banco')      return jsonResponse(getBanco());\n"+
+"  if (action === 'ordini')     return jsonResponse(getOrdini());\n"+
+"  if (action === 'clientib2b') return jsonResponse(getClientiB2B());\n"+
 "  return jsonResponse({ok:true, info:'Forno Vendite script attivo'});\n"+
 "}\n"+
 "\n"+
@@ -1394,11 +1422,12 @@ var APPS_SCRIPT_CODE=
 "    var payload = JSON.parse(e.postData.contents);\n"+
 "    var action  = payload.action || 'sales';\n"+
 "    if (action === 'ping') return jsonResponse({ok:true});\n"+
-"    if (action === 'products')     { saveProducts(payload.products); return jsonResponse({ok:true}); }\n"+
-"    if (action === 'sales')        { saveSales(payload.sales); return jsonResponse({ok:true}); }\n"+
-"    if (action === 'banco')        { saveBanco(payload.records); return jsonResponse({ok:true}); }\n"+
-"    if (action === 'ordini')       { saveOrdini(payload.ordini); return jsonResponse({ok:true}); }\n"+
-"    if (action === 'deleteOrdine') { deleteOrdine(payload.id); return jsonResponse({ok:true}); }\n"+
+"    if (action === 'products')      { saveProducts(payload.products); return jsonResponse({ok:true}); }\n"+
+"    if (action === 'sales')         { saveSales(payload.sales); return jsonResponse({ok:true}); }\n"+
+"    if (action === 'banco')         { saveBanco(payload.records); return jsonResponse({ok:true}); }\n"+
+"    if (action === 'ordini')        { saveOrdini(payload.ordini); return jsonResponse({ok:true}); }\n"+
+"    if (action === 'deleteOrdine')  { deleteOrdine(payload.id); return jsonResponse({ok:true}); }\n"+
+"    if (action === 'clientib2b')    { saveClientiB2B(payload.clienti); return jsonResponse({ok:true}); }\n"+
 "    if (payload.sales) { saveSales(payload.sales); return jsonResponse({ok:true}); }\n"+
 "    return jsonResponse({ok:false, error:'azione sconosciuta'});\n"+
 "  } catch(err) {\n"+
@@ -1583,7 +1612,29 @@ var APPS_SCRIPT_CODE=
 "  for (var i=all.length-1;i>=1;i--) { if (String(all[i][0])===String(id)) sh.deleteRow(i+1); }\n"+
 "}\n"+
 "\n"+
-"function jsonResponse(obj) {\n"+
+"var CLIENTIB2B_SHEET = 'ClientiB2B';\n"+
+"function saveClientiB2B(clienti) {\n"+
+"  var ss = SpreadsheetApp.getActiveSpreadsheet();\n"+
+"  var sh = ss.getSheetByName(CLIENTIB2B_SHEET);\n"+
+"  if (!sh) { sh = ss.insertSheet(CLIENTIB2B_SHEET); sh.appendRow(['id','nome','tel','prodotti']); }\n"+
+"  // Svuota e riscrivi tutto\n"+
+"  if (sh.getLastRow() > 1) sh.getRange(2,1,sh.getLastRow()-1,4).clearContent();\n"+
+"  var rows = clienti.map(function(c){ return [c.id, c.nome, c.tel||'', JSON.stringify(c.prodotti||[])]; });\n"+
+"  if (rows.length) sh.getRange(2,1,rows.length,4).setValues(rows);\n"+
+"}\n"+
+"function getClientiB2B() {\n"+
+"  var ss = SpreadsheetApp.getActiveSpreadsheet();\n"+
+"  var sh = ss.getSheetByName(CLIENTIB2B_SHEET);\n"+
+"  if (!sh || sh.getLastRow() < 2) return {ok:true, clienti:[]};\n"+
+"  var rows = sh.getRange(2,1,sh.getLastRow()-1,4).getValues();\n"+
+"  var clienti = rows.filter(function(r){return r[0];}).map(function(r){\n"+
+"    var prod = []; try { prod = JSON.parse(r[3])||[]; } catch(e){}\n"+
+"    return {id:String(r[0]), nome:String(r[1]), tel:String(r[2]), prodotti:prod};\n"+
+"  });\n"+
+"  return {ok:true, clienti:clienti};\n"+
+"}\n"+
+"\n"+
+"function jsonResponse(obj) {\n"
 "  return ContentService\n"+
 "    .createTextOutput(JSON.stringify(obj))\n"+
 "    .setMimeType(ContentService.MimeType.JSON);\n"+
@@ -1727,6 +1778,119 @@ function fetchBancoFromSheet(silent){
 }
 
 /* ============================== ORDINI ============================== */
+/* ===== CLIENTI B2B ===== */
+var CB2B_KEY = 'forno_clientib2b_v1';
+var clientiB2b = load(CB2B_KEY, []);
+var cbEditId = null;
+var cbProds = []; // prodotti abituali nel form
+
+function saveClientiB2bLocal(){lsSet(CB2B_KEY,JSON.stringify(clientiB2b));}
+
+function pushClientiB2bToSheet(){
+  if(!cfg.sheetUrl)return;
+  postSheet({action:'clientib2b',clienti:clientiB2b}).catch(function(){});
+}
+
+function fetchClientiB2bFromSheet(silent){
+  if(!cfg.sheetUrl)return;
+  fetch(cfg.sheetUrl+'?action=clientib2b',{cache:'no-store'})
+    .then(function(r){return r.json();})
+    .then(function(j){
+      if(!j||!j.ok||!Array.isArray(j.clienti))return;
+      clientiB2b=j.clienti;
+      saveClientiB2bLocal();
+      populateB2bSelect();
+      if(!silent)toast('Clienti B2B aggiornati ✓');
+    }).catch(function(){});
+}
+
+function populateB2bSelect(){
+  var sel=el('b2bSelect');
+  if(!sel)return;
+  var cur=sel.value;
+  sel.innerHTML='<option value="">— Seleziona cliente —</option>'
+    +clientiB2b.map(function(c){
+      return '<option value="'+c.id+'"'+(c.id===cur?' selected':'')+'>'+esc(c.nome)+'</option>';
+    }).join('');
+}
+
+function onB2bSelect(){
+  var id=el('b2bSelect').value;
+  el('b2bEditBtn').style.display=id?'inline-flex':'none';
+  if(!id){el('oNome').value='';el('oTel').value='';return;}
+  var c=clientiB2b.find(function(x){return x.id===id;});
+  if(!c)return;
+  el('oNome').value=c.nome;
+  el('oTel').value=c.tel||'';
+  // Pre-carica prodotti abituali
+  ordItems=c.prodotti.map(function(p){return {name:p.name,qty:p.qty||1,note:p.note||''};});
+  renderOrdItemsForm();
+}
+
+function editSelectedB2bClient(){
+  var id=el('b2bSelect').value;
+  if(id)openClienteB2bForm(id);
+}
+
+function openClienteB2bForm(id){
+  cbEditId=id||null;
+  if(id){
+    var c=clientiB2b.find(function(x){return x.id===id;});
+    el('clienteB2bTitle').textContent='Modifica cliente B2B';
+    el('cbNome').value=c.nome;el('cbTel').value=c.tel||'';
+    cbProds=c.prodotti.map(function(p){return Object.assign({},p);});
+    el('delClienteB2bBtn').style.display='block';
+  } else {
+    el('clienteB2bTitle').textContent='Nuovo cliente B2B';
+    el('cbNome').value='';el('cbTel').value='';
+    cbProds=[];
+    el('delClienteB2bBtn').style.display='none';
+  }
+  renderCbProds();
+  openSheet('clienteB2bSheet');
+}
+
+function renderCbProds(){
+  el('cbProdWrap').innerHTML=cbProds.map(function(p,i){
+    return '<div style="display:flex;gap:8px;align-items:center;margin-bottom:8px">'
+      +'<input style="width:44px;padding:8px 6px;border:1.5px solid var(--line);border-radius:10px;text-align:center;font-size:14px" type="number" min="1" value="'+p.qty+'" oninput="cbProds['+i+'].qty=parseInt(this.value)||1">'
+      +'<input style="flex:1;padding:8px 10px;border:1.5px solid var(--line);border-radius:10px;font-size:14px" placeholder="Nome prodotto" value="'+esc(p.name)+'" oninput="cbProds['+i+'].name=this.value">'
+      +'<input style="width:90px;padding:8px 8px;border:1.5px solid var(--line);border-radius:10px;font-size:13px;color:var(--ink-soft)" placeholder="Note" value="'+esc(p.note||'')+'" oninput="cbProds['+i+'].note=this.value">'
+      +'<button onclick="cbProds.splice('+i+',1);renderCbProds()" style="background:none;border:none;font-size:18px;color:var(--neg);cursor:pointer;padding:0 4px">×</button>'
+      +'</div>';
+  }).join('');
+}
+
+function addCbProd(){cbProds.push({name:'',qty:1,note:''});renderCbProds();}
+
+function saveClienteB2b(){
+  var nome=el('cbNome').value.trim();
+  if(!nome){toast('Inserisci il nome del cliente');return;}
+  var prods=cbProds.filter(function(p){return p.name.trim();});
+  if(cbEditId){
+    var c=clientiB2b.find(function(x){return x.id===cbEditId;});
+    c.nome=nome;c.tel=el('cbTel').value.trim();c.prodotti=prods;
+  } else {
+    clientiB2b.push({id:uid(),nome:nome,tel:el('cbTel').value.trim(),prodotti:prods});
+  }
+  saveClientiB2bLocal();
+  pushClientiB2bToSheet();
+  populateB2bSelect();
+  toast('Cliente salvato ✓');
+  closeSheets();
+}
+
+function deleteClienteB2b(){
+  if(!cbEditId)return;
+  if(!confirm('Eliminare questo cliente B2B?'))return;
+  clientiB2b=clientiB2b.filter(function(x){return x.id!==cbEditId;});
+  saveClientiB2bLocal();
+  pushClientiB2bToSheet();
+  populateB2bSelect();
+  toast('Cliente eliminato');
+  closeSheets();
+}
+
 var OKEY='forno_ordini_v1';
 
 // Normalizza qualsiasi formato data a yyyy-MM-dd
@@ -1758,6 +1922,9 @@ function setOrdTipo(t){
   ordTipo=t;
   el('oTipoB2c').classList.toggle('on',t==='b2c');
   el('oTipoB2b').classList.toggle('on',t==='b2b');
+  el('b2bClientePicker').style.display=t==='b2b'?'block':'none';
+  if(t==='b2b'){populateB2bSelect();}
+  else{el('b2bSelect').value='';el('oNome').value='';el('oTel').value='';}
 }
 
 var ordFilter='attivi';
@@ -1897,26 +2064,32 @@ function buildEscPosBytes(o){
     +' '+now.toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'});
   var num=o.id.slice(-6).toUpperCase();
 
+  // GS ! n — height = (n>>4)+1, width = (n&0xF)+1
+  function size(h,w){b(GS,0x21,(((h-1)&0xF)<<4)|((w-1)&0xF))}
+
   // Init
   b(ESC,0x40);
-  // Centro + grassetto grande
-  b(ESC,0x61,0x01); b(ESC,0x21,0x30);
-  t('FORNO'); nl();
-  // Reset size, centro
-  b(ESC,0x21,0x00);
+  b(ESC,0x61,0x00); // sinistra
+
+  // Intestazione piccola
+  b(ESC,0x45,0x01); t('ORDINE #'+num+'  ['+(o.tipo||'B2C').toUpperCase()+']'); b(ESC,0x45,0x00); nl();
   t('--------------------------------'); nl();
-  // Sinistra
-  b(ESC,0x61,0x00);
-  b(ESC,0x45,0x01); t('ORDINE #'+num); b(ESC,0x45,0x00);
-  t('  ['+(o.tipo||'B2C').toUpperCase()+']'); nl();
+
+  // Cliente — doppia altezza
+  t('Cliente:'); nl();
+  size(2,1); b(ESC,0x45,0x01); t(o.cliente.nome); b(ESC,0x45,0x00); size(1,1); nl();
+  if(o.cliente.tel){t('Tel: '+o.cliente.tel); nl();}
   t('--------------------------------'); nl();
-  t('Cliente: '+o.cliente.nome); nl();
-  if(o.cliente.tel) {t('Tel: '+o.cliente.tel); nl();}
-  t('Consegna: '+dateFmt); nl();
+
+  // Data — doppia altezza
+  t('Consegna:'); nl();
+  size(2,1); b(ESC,0x45,0x01); t(dateFmt); b(ESC,0x45,0x00); size(1,1); nl();
   t('--------------------------------'); nl();
+
+  // Articoli — font leggermente più grande (h=2)
   b(ESC,0x45,0x01); t('ARTICOLI'); b(ESC,0x45,0x00); nl();
   o.items.forEach(function(i){
-    t(i.qty+' x '+i.name); nl();
+    size(2,1); t(i.qty+' x '+i.name); size(1,1); nl();
     if(i.note){t('    ('+i.note+')'); nl();}
   });
   t('--------------------------------'); nl();
@@ -2044,6 +2217,7 @@ function openOrdineForm(){
   el('oNome').value='';el('oTel').value='';el('oNote').value='';
   el('oData').value=todayStr();
   el('delOrdBtn').style.display='none';
+  el('b2bSelect').value='';
   setOrdTipo('b2c');
   renderOrdItemsForm();
   openSheet('ordineSheet');
@@ -2060,6 +2234,11 @@ function editOrdine(id){
   el('oData').value=o.dataConsegna;
   el('delOrdBtn').style.display='block';
   setOrdTipo(o.tipo||'b2c');
+  // Pre-seleziona cliente B2B se esiste
+  if(o.tipo==='b2b'){
+    var cb=clientiB2b.find(function(c){return c.nome===o.cliente.nome;});
+    if(cb)el('b2bSelect').value=cb.id;
+  }
   renderOrdItemsForm();
   openSheet('ordineSheet');
 }
@@ -2195,6 +2374,7 @@ function syncAll(showToast){
   fetchSalesFromSheet(true);
   fetchBancoFromSheet(true);
   fetchOrdiniFromSheet(true);
+  fetchClientiB2bFromSheet(true);
   if(cfg.auto)syncPending(true);
   syncBanco(true);
   syncOrdini(true);
