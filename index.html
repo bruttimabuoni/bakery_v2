@@ -1728,7 +1728,25 @@ function fetchBancoFromSheet(silent){
 
 /* ============================== ORDINI ============================== */
 var OKEY='forno_ordini_v1';
+
+// Normalizza qualsiasi formato data a yyyy-MM-dd
+function normalizeDate(s){
+  if(!s)return '';
+  s=String(s).trim();
+  // già ISO yyyy-MM-dd
+  if(/^\d{4}-\d{2}-\d{2}$/.test(s))return s;
+  // dd/MM/yyyy o dd-MM-yyyy
+  var m=s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
+  if(m)return m[3]+'-'+m[2].padStart(2,'0')+'-'+m[1].padStart(2,'0');
+  // prova Date generico (es. stringa locale JS)
+  var d=new Date(s);
+  if(!isNaN(d.getTime()))return d.toISOString().slice(0,10);
+  return s;
+}
+
 var ordini = load(OKEY, []); // [{id,ts,dataConsegna,cliente:{nome,tel},items:[{productId,name,qty,note}],stato,note,tipo,synced}]
+// Normalizza date salvate in formato diverso da precedenti versioni
+ordini.forEach(function(o){o.dataConsegna=normalizeDate(o.dataConsegna);});
 var ordEditId = null;
 var ordItems = []; // stato temporaneo form
 var ordTipo = 'b2c'; // stato temporaneo form
@@ -1850,9 +1868,122 @@ function calPrev(){calMonth--;if(calMonth<0){calMonth=11;calYear--;}calSelectedD
 function calNext(){calMonth++;if(calMonth>11){calMonth=0;calYear++;}calSelectedDay=null;renderCalendario()}
 function selectCalDay(d){calSelectedDay=calSelectedDay===d?null:d;renderCalendario()}
 
-function stampaOrdine(id){
-  var o=ordini.find(function(x){return x.id===id;});
-  if(!o)return;
+/* ===== STAMPA ORDINE ===== */
+// UUID BLE comuni per stampanti termiche economiche (NETUM, GOOJPRT, ecc.)
+var BLE_PRINT_SERVICES = [
+  '000018f0-0000-1000-8000-00805f9b34fb', // NETUM / generic
+  'e7810a71-73ae-499d-8c15-faa9aef0c3f2', // Zjiang / Goojprt
+  '49535343-fe7d-4ae5-8fa9-9fafd205e455', // Microchip SPP-over-BLE
+];
+var BLE_PRINT_CHARS = [
+  '00002af1-0000-1000-8000-00805f9b34fb',
+  'bef8d6c9-9c21-4c9e-b632-bd58c1009f9f',
+  '49535343-1e4d-4bd9-ba61-23c647249616',
+];
+var _blePrinter = null; // {device, char} cached
+
+function buildEscPosBytes(o){
+  var ESC=0x1B, GS=0x1D;
+  var enc=new TextEncoder();
+  var parts=[];
+  function b(){for(var i=0;i<arguments.length;i++)parts.push(new Uint8Array([arguments[i]]))}
+  function t(s){parts.push(enc.encode(s))}
+  function nl(n){for(var i=0;i<(n||1);i++)parts.push(new Uint8Array([0x0A]))}
+
+  var d=new Date(o.dataConsegna+'T00:00:00');
+  var dateFmt=d.toLocaleDateString('it-IT',{weekday:'short',day:'numeric',month:'short',year:'numeric'});
+  var now=new Date();
+  var nowFmt=now.toLocaleDateString('it-IT',{day:'2-digit',month:'2-digit',year:'numeric'})
+    +' '+now.toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'});
+  var num=o.id.slice(-6).toUpperCase();
+
+  // Init
+  b(ESC,0x40);
+  // Centro + grassetto grande
+  b(ESC,0x61,0x01); b(ESC,0x21,0x30);
+  t('FORNO'); nl();
+  // Reset size, centro
+  b(ESC,0x21,0x00);
+  t('--------------------------------'); nl();
+  // Sinistra
+  b(ESC,0x61,0x00);
+  b(ESC,0x45,0x01); t('ORDINE #'+num); b(ESC,0x45,0x00);
+  t('  ['+(o.tipo||'B2C').toUpperCase()+']'); nl();
+  t('--------------------------------'); nl();
+  t('Cliente: '+o.cliente.nome); nl();
+  if(o.cliente.tel) {t('Tel: '+o.cliente.tel); nl();}
+  t('Consegna: '+dateFmt); nl();
+  t('--------------------------------'); nl();
+  b(ESC,0x45,0x01); t('ARTICOLI'); b(ESC,0x45,0x00); nl();
+  o.items.forEach(function(i){
+    t(i.qty+' x '+i.name); nl();
+    if(i.note){t('    ('+i.note+')'); nl();}
+  });
+  t('--------------------------------'); nl();
+  if(o.note){b(ESC,0x45,0x01);t('Note:');b(ESC,0x45,0x00);nl();t(o.note);nl();t('--------------------------------');nl();}
+  t('Stampato: '+nowFmt); nl(4);
+  // Taglia carta (se supportato)
+  b(GS,0x56,0x41,0x10);
+
+  // Concatena tutto
+  var total=parts.reduce(function(s,a){return s+a.length},0);
+  var out=new Uint8Array(total);
+  var off=0;
+  parts.forEach(function(a){out.set(a,off);off+=a.length;});
+  return out;
+}
+
+async function stampaViBle(bytes){
+  // Se stampante già connessa, riusa
+  if(_blePrinter&&_blePrinter.device.gatt.connected){
+    await _blePrinter.char.writeValueWithoutResponse(bytes.slice(0,512));
+    // Invia a chunk da 512 byte
+    for(var i=512;i<bytes.length;i+=512){
+      await new Promise(function(r){setTimeout(r,50)});
+      await _blePrinter.char.writeValueWithoutResponse(bytes.slice(i,i+512));
+    }
+    return true;
+  }
+  // Richiedi dispositivo BLE
+  var device;
+  try{
+    device=await navigator.bluetooth.requestDevice({
+      acceptAllDevices:true,
+      optionalServices:BLE_PRINT_SERVICES
+    });
+  }catch(e){return false;} // utente ha annullato
+
+  toast('Connessione stampante…');
+  var server=await device.gatt.connect();
+  var services=await server.getPrimaryServices();
+  var printChar=null;
+
+  for(var si=0;si<services.length&&!printChar;si++){
+    var chars;
+    try{chars=await services[si].getCharacteristics();}catch(e){continue;}
+    for(var ci=0;ci<chars.length&&!printChar;ci++){
+      var c=chars[ci];
+      if(c.properties.write||c.properties.writeWithoutResponse){
+        printChar=c;
+      }
+    }
+  }
+  if(!printChar){device.gatt.disconnect();return false;}
+  _blePrinter={device:device,char:printChar};
+
+  // Invia a chunk da 512 byte
+  for(var i=0;i<bytes.length;i+=512){
+    if(i>0)await new Promise(function(r){setTimeout(r,50)});
+    var chunk=bytes.slice(i,i+512);
+    try{
+      if(printChar.properties.writeWithoutResponse) await printChar.writeValueWithoutResponse(chunk);
+      else await printChar.writeValue(chunk);
+    }catch(e){_blePrinter=null;return false;}
+  }
+  return true;
+}
+
+function stampaViaPdf(o){
   var d=new Date(o.dataConsegna+'T00:00:00');
   var dateFmt=d.toLocaleDateString('it-IT',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
   var now=new Date();
@@ -1860,50 +1991,43 @@ function stampaOrdine(id){
     +' '+now.toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'});
   var num=o.id.slice(-6).toUpperCase();
   var itemsRows=o.items.map(function(i){
-    return '<tr><td style="padding:3px 0">'+i.qty+' × '+i.name+'</td>'
+    return '<tr><td style="padding:3px 0">'+i.qty+' \xd7 '+i.name+'</td>'
       +(i.note?'<td style="font-size:10px;color:#555;padding-left:6px">('+i.note+')</td>':'<td></td>')+'</tr>';
   }).join('');
-
-  var html='<!DOCTYPE html><html><head><meta charset="utf-8">'
-    +'<title>Ordine #'+num+'</title>'
-    +'<style>'
-    +'*{margin:0;padding:0;box-sizing:border-box}'
-    +'body{font-family:monospace;font-size:12px;width:58mm;padding:4mm 3mm;color:#000;background:#fff}'
-    +'h1{font-size:14px;text-align:center;margin-bottom:2mm;letter-spacing:1px}'
-    +'.sep{border:none;border-top:1px dashed #000;margin:3mm 0}'
-    +'.lbl{font-size:9px;text-transform:uppercase;letter-spacing:.5px;color:#444}'
-    +'.val{font-size:13px;font-weight:bold;margin-bottom:1mm}'
+  var html='<!DOCTYPE html><html><head><meta charset="utf-8"><title>Ordine #'+num+'</title>'
+    +'<style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:monospace;font-size:12px;width:58mm;padding:4mm 3mm;color:#000;background:#fff}'
+    +'h1{font-size:14px;text-align:center;margin-bottom:2mm;letter-spacing:1px}.sep{border:none;border-top:1px dashed #000;margin:3mm 0}'
+    +'.lbl{font-size:9px;text-transform:uppercase;letter-spacing:.5px;color:#444}.val{font-size:13px;font-weight:bold;margin-bottom:1mm}'
     +'.tipo{display:inline-block;border:1px solid #000;padding:1px 5px;font-size:10px;margin-left:4px;vertical-align:middle}'
-    +'table{width:100%;border-collapse:collapse}'
-    +'.note-box{border:1px solid #000;padding:2mm;margin-top:2mm;font-size:11px}'
-    +'.footer{text-align:center;font-size:9px;margin-top:3mm;color:#555}'
-    +'@media print{@page{margin:0;size:58mm auto}body{padding:3mm 2mm}}'
+    +'table{width:100%;border-collapse:collapse}.note-box{border:1px solid #000;padding:2mm;margin-top:2mm;font-size:11px}'
+    +'.footer{text-align:center;font-size:9px;margin-top:3mm;color:#555}@media print{@page{margin:0;size:58mm auto}body{padding:3mm 2mm}}'
     +'</style></head><body>'
-    +'<h1>🥖 FORNO</h1>'
-    +'<hr class="sep">'
-    +'<div class="lbl">Ordine</div>'
-    +'<div class="val">#'+num+'<span class="tipo">'+(o.tipo||'b2c').toUpperCase()+'</span></div>'
-    +'<hr class="sep">'
-    +'<div class="lbl">Cliente</div>'
-    +'<div class="val">'+o.cliente.nome+'</div>'
+    +'<h1>🥖 FORNO</h1><hr class="sep">'
+    +'<div class="lbl">Ordine</div><div class="val">#'+num+'<span class="tipo">'+(o.tipo||'b2c').toUpperCase()+'</span></div><hr class="sep">'
+    +'<div class="lbl">Cliente</div><div class="val">'+o.cliente.nome+'</div>'
     +(o.cliente.tel?'<div style="font-size:11px;margin-bottom:2mm">📞 '+o.cliente.tel+'</div>':'')
-    +'<div class="lbl">Consegna</div>'
-    +'<div class="val" style="font-size:12px">'+dateFmt+'</div>'
-    +'<hr class="sep">'
-    +'<div class="lbl" style="margin-bottom:2mm">Articoli</div>'
-    +'<table>'+itemsRows+'</table>'
+    +'<div class="lbl">Consegna</div><div class="val" style="font-size:12px">'+dateFmt+'</div><hr class="sep">'
+    +'<div class="lbl" style="margin-bottom:2mm">Articoli</div><table>'+itemsRows+'</table>'
     +(o.note?'<div class="note-box"><span class="lbl">Note</span><br>'+o.note+'</div>':'')
-    +'<hr class="sep">'
-    +'<div class="footer">Stampato il '+nowFmt+'</div>'
-    +'</body></html>';
-
+    +'<hr class="sep"><div class="footer">Stampato il '+nowFmt+'</div></body></html>';
   var blob=new Blob([html],{type:'text/html'});
   var url=URL.createObjectURL(blob);
   var w=window.open(url,'_blank');
-  if(w){
-    w.onload=function(){
-      setTimeout(function(){w.print();URL.revokeObjectURL(url);},300);
-    };
+  if(w)w.onload=function(){setTimeout(function(){w.print();URL.revokeObjectURL(url);},300);};
+}
+
+function stampaOrdine(id){
+  var o=ordini.find(function(x){return x.id===id;});
+  if(!o)return;
+  // Prova BLE se disponibile, altrimenti PDF
+  if(navigator.bluetooth){
+    var bytes=buildEscPosBytes(o);
+    stampaViBle(bytes).then(function(ok){
+      if(ok){toast('Stampa inviata ✓');}
+      else{toast('BLE non riuscito, apro PDF…');stampaViaPdf(o);}
+    }).catch(function(){stampaViaPdf(o);});
+  } else {
+    stampaViaPdf(o);
   }
 }
 
@@ -2006,7 +2130,7 @@ function fetchOrdiniFromSheet(silent){
       var remoteIds={};j.ordini.forEach(function(o){remoteIds[o.id]=true});
       var localOnly=ordini.filter(function(o){return !remoteIds[o.id]});
       ordini=j.ordini.concat(localOnly);
-      ordini.forEach(function(o){o.synced=true});
+      ordini.forEach(function(o){o.synced=true;o.dataConsegna=normalizeDate(o.dataConsegna);});
       saveOrdiniLocal();
       if(!silent)toast('Ordini aggiornati ✓');
     }).catch(function(){if(!silent)toast('Impossibile caricare ordini dal foglio');});
