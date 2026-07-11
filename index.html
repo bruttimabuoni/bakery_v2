@@ -577,6 +577,7 @@
         <div style="margin-top:10px;display:flex;flex-direction:column;gap:8px">
           <button class="btn sm ghost full" onclick="pushProductsToSheet(false)">Invia prodotti a Sheets</button>
           <button class="btn sm ghost full" onclick="syncNow()">Invia vendite non sincronizzate</button>
+          <button class="btn sm ghost full" onclick="riscriviTutteLeVendite()">🔄 Riscrivi tutte le vendite su Sheets</button>
           <button class="btn sm ghost full" onclick="buildAnalysisSheets()">📊 Rigenera schede analisi</button>
         </div>
       </details>
@@ -1641,6 +1642,7 @@ function fetchProductsFromSheet(){
 
 function pushProductsToSheet(silent){
   if(!cfg.sheetUrl){if(!silent)toast('Nessun foglio collegato');return}
+  if(!products||!products.length){if(!silent)toast('Nessun prodotto locale da inviare');return}
   if(prodSyncing)return;
   prodSyncing=true;
   if(!silent)updateProdSyncUI('invio…');
@@ -1685,6 +1687,7 @@ var APPS_SCRIPT_CODE=
 "    if (action === 'ping') return jsonResponse({ok:true});\n"+
 "    if (action === 'products')      { saveProducts(payload.products); return jsonResponse({ok:true}); }\n"+
 "    if (action === 'sales')         { saveSales(payload.sales); return jsonResponse({ok:true}); }\n"+
+"    if (action === 'resyncSales')   { clearAndSaveSales(payload.sales); return jsonResponse({ok:true}); }\n"+
 "    if (action === 'banco')         { saveBanco(payload.records); return jsonResponse({ok:true}); }\n"+
 "    if (action === 'ordini')        { saveOrdini(payload.ordini); return jsonResponse({ok:true}); }\n"+
 "    if (action === 'deleteOrdine')  { deleteOrdine(payload.id); return jsonResponse({ok:true}); }\n"+
@@ -1715,13 +1718,13 @@ var APPS_SCRIPT_CODE=
 "}\n"+
 "\n"+
 "function saveProducts(products) {\n"+
+"  if (!products || !products.length) return; // non cancellare mai se la lista e vuota\n"+
 "  var ss = SpreadsheetApp.getActiveSpreadsheet();\n"+
 "  var sh = ss.getSheetByName(PRODUCTS_SHEET);\n"+
 "  if (!sh) sh = ss.insertSheet(PRODUCTS_SHEET);\n"+
 "  sh.getRange(1,1,1,8).setValues([['ID','Nome','Reparto','Unita','Prezzo','Giorni (2=Mar,3=Mer,4=Gio,5=Ven,6=Sab)','Banco','Peso medio (g)']]);\n"+
 "  sh.getRange(1,1,1,8).setFontWeight('bold');\n"+
 "  if (sh.getLastRow() > 1) sh.getRange(2, 1, sh.getLastRow()-1, 8).clearContent();\n"+
-"  if (!products || !products.length) return;\n"+
 "  var rows = products.map(function(p){ return [p.id, p.name, p.rep, p.unit, p.price, (p.days||[]).join(';'), p.banco===false?'No':'Si', p.pesoMedio||0]; });\n"+
 "  sh.getRange(2, 1, rows.length, 8).setValues(rows);\n"+
 "}\n"+
@@ -1758,6 +1761,31 @@ var APPS_SCRIPT_CODE=
 "    });\n"+
 "  });\n"+
 "  if (newRows.length) sh.getRange(sh.getLastRow()+1, 1, newRows.length, 9).setValues(newRows);\n"+
+"}\n"+
+"\n"+
+"function clearAndSaveSales(sales) {\n"+
+"  var ss = SpreadsheetApp.getActiveSpreadsheet();\n"+
+"  var sh = ss.getSheetByName(SALES_SHEET);\n"+
+"  if (!sh) { sh = ss.insertSheet(SALES_SHEET); } else { sh.clearContents(); }\n"+
+"  sh.getRange(1,1,1,9).setValues([['Data','Ora','Scontrino','Reparto','Prodotto','Unita','Quantita','Prezzo','Totale riga']]);\n"+
+"  sh.getRange(1,1,1,9).setFontWeight('bold');\n"+
+"  if (!sales || !sales.length) return;\n"+
+"  var newRows = [];\n"+
+"  sales.forEach(function(s) {\n"+
+"    var dateVal;\n"+
+"    var dp = String(s.data).split('/');\n"+
+"    if (dp.length === 3) {\n"+
+"      dateVal = new Date(parseInt(dp[2]), parseInt(dp[1])-1, parseInt(dp[0]));\n"+
+"    } else {\n"+
+"      var dp2 = String(s.data).split('-');\n"+
+"      dateVal = dp2.length===3 ? new Date(parseInt(dp2[0]), parseInt(dp2[1])-1, parseInt(dp2[2])) : new Date(s.data);\n"+
+"    }\n"+
+"    if (isNaN(dateVal.getTime())) dateVal = new Date();\n"+
+"    (s.rows||[]).forEach(function(r) {\n"+
+"      newRows.push([dateVal, s.ora, s.id, r[0], r[1], r[2], r[3], r[4], r[5]]);\n"+
+"    });\n"+
+"  });\n"+
+"  if (newRows.length) sh.getRange(2, 1, newRows.length, 9).setValues(newRows);\n"+
 "}\n"+
 "\n"+
 "// ----- leggi vendite -----\n"+
@@ -2046,24 +2074,34 @@ var APPS_SCRIPT_CODE=
 "}\n"+
 "\n"+
 "function buildSheetReparti(ss) {\n"+
+"  var now = new Date();\n"+
+"  var curM = now.getMonth();  // 0-11, uguale a QUERY month()\n"+
+"  var curY = now.getFullYear();\n"+
+"  var prevM = curM === 0 ? 11 : curM - 1;\n"+
+"  var prevY = curM === 0 ? curY - 1 : curY;\n"+
 "  var sh = clearAndTitle(ss, 'Analisi Reparti', 'VENDITE PER REPARTO');\n"+
 "  sh.getRange('A3').setValue('Reparto - Totale').setFontWeight('bold').setBackground('#E8F5E9');\n"+
 "  sh.getRange('A4').setFormula('=IFERROR(QUERY(Vendite!A:I,\"SELECT D, sum(I), sum(G) WHERE D IS NOT NULL GROUP BY D ORDER BY sum(I) DESC LABEL D \\'Reparto\\', sum(I) \\'Incasso\\', sum(G) \\'Pz venduti\\'\",1),{\"Reparto\",\"Incasso\",\"Pz\"})' );\n"+
 "  sh.getRange('E3').setValue('Reparto - Mese corrente').setFontWeight('bold').setBackground('#C8E6C9');\n"+
-"  sh.getRange('E4').setFormula('=IFERROR(QUERY(Vendite!A:I,\"SELECT D, sum(I) WHERE D IS NOT NULL AND month(A)=month(now()) AND year(A)=year(now()) GROUP BY D ORDER BY sum(I) DESC LABEL D \\'Reparto\\', sum(I) \\'Incasso\\'\",1),{\"Reparto\",\"Incasso\"})');\n"+
+"  sh.getRange('E4').setFormula('=IFERROR(QUERY(Vendite!A:I,\"SELECT D, sum(I) WHERE D IS NOT NULL AND month(A)='+curM+' AND year(A)='+curY+' GROUP BY D ORDER BY sum(I) DESC LABEL D \\'Reparto\\', sum(I) \\'Incasso\\'\",1),{\"Reparto\",\"Incasso\"})');\n"+
 "  sh.getRange('H3').setValue('Reparto - Mese scorso').setFontWeight('bold').setBackground('#DCEDC8');\n"+
-"  sh.getRange('H4').setFormula('=IFERROR(QUERY(Vendite!A:I,\"SELECT D, sum(I) WHERE D IS NOT NULL AND month(A)=month(date(year(now()),month(now())-1,1)) AND year(A)=year(date(year(now()),month(now())-1,1)) GROUP BY D ORDER BY sum(I) DESC LABEL D \\'Reparto\\', sum(I) \\'Incasso\\'\",1),{\"Reparto\",\"Incasso\"})');\n"+
+"  sh.getRange('H4').setFormula('=IFERROR(QUERY(Vendite!A:I,\"SELECT D, sum(I) WHERE D IS NOT NULL AND month(A)='+prevM+' AND year(A)='+prevY+' GROUP BY D ORDER BY sum(I) DESC LABEL D \\'Reparto\\', sum(I) \\'Incasso\\'\",1),{\"Reparto\",\"Incasso\"})');\n"+
 "  sh.autoResizeColumns(1,10);\n"+
 "}\n"+
 "\n"+
 "function buildSheetProdotti(ss) {\n"+
+"  var now = new Date();\n"+
+"  var curM = now.getMonth();\n"+
+"  var curY = now.getFullYear();\n"+
+"  var prevM = curM === 0 ? 11 : curM - 1;\n"+
+"  var prevY = curM === 0 ? curY - 1 : curY;\n"+
 "  var sh = clearAndTitle(ss, 'Analisi Prodotti', 'VENDITE PER PRODOTTO');\n"+
 "  sh.getRange('A3').setValue('Top prodotti - Incasso totale').setFontWeight('bold').setBackground('#E3F2FD');\n"+
 "  sh.getRange('A4').setFormula('=IFERROR(QUERY(Vendite!A:I,\"SELECT E, D, sum(I), sum(G) WHERE E IS NOT NULL GROUP BY E, D ORDER BY sum(I) DESC LIMIT 40 LABEL E \\'Prodotto\\', D \\'Reparto\\', sum(I) \\'Incasso\\', sum(G) \\'Pz venduti\\'\",1),{\"Prodotto\",\"Reparto\",\"Incasso\",\"Pz\"})');\n"+
 "  sh.getRange('F3').setValue('Mese corrente').setFontWeight('bold').setBackground('#BBDEFB');\n"+
-"  sh.getRange('F4').setFormula('=IFERROR(QUERY(Vendite!A:I,\"SELECT E, sum(I), sum(G) WHERE E IS NOT NULL AND month(A)=month(now()) AND year(A)=year(now()) GROUP BY E ORDER BY sum(I) DESC LIMIT 40 LABEL E \\'Prodotto\\', sum(I) \\'Incasso\\', sum(G) \\'Pz\\'\",1),{\"Prodotto\",\"Incasso\",\"Pz\"})');\n"+
+"  sh.getRange('F4').setFormula('=IFERROR(QUERY(Vendite!A:I,\"SELECT E, sum(I), sum(G) WHERE E IS NOT NULL AND month(A)='+curM+' AND year(A)='+curY+' GROUP BY E ORDER BY sum(I) DESC LIMIT 40 LABEL E \\'Prodotto\\', sum(I) \\'Incasso\\', sum(G) \\'Pz\\'\",1),{\"Prodotto\",\"Incasso\",\"Pz\"})');\n"+
 "  sh.getRange('J3').setValue('Mese scorso').setFontWeight('bold').setBackground('#E1F5FE');\n"+
-"  sh.getRange('J4').setFormula('=IFERROR(QUERY(Vendite!A:I,\"SELECT E, sum(I), sum(G) WHERE E IS NOT NULL AND month(A)=month(date(year(now()),month(now())-1,1)) AND year(A)=year(date(year(now()),month(now())-1,1)) GROUP BY E ORDER BY sum(I) DESC LIMIT 40 LABEL E \\'Prodotto\\', sum(I) \\'Incasso\\', sum(G) \\'Pz\\'\",1),{\"Prodotto\",\"Incasso\",\"Pz\"})');\n"+
+"  sh.getRange('J4').setFormula('=IFERROR(QUERY(Vendite!A:I,\"SELECT E, sum(I), sum(G) WHERE E IS NOT NULL AND month(A)='+prevM+' AND year(A)='+prevY+' GROUP BY E ORDER BY sum(I) DESC LIMIT 40 LABEL E \\'Prodotto\\', sum(I) \\'Incasso\\', sum(G) \\'Pz\\'\",1),{\"Prodotto\",\"Incasso\",\"Pz\"})');\n"+
 "  sh.autoResizeColumns(1,13);\n"+
 "}\n"+
 "\n"+
@@ -2120,13 +2158,14 @@ var APPS_SCRIPT_CODE=
 "\n"+
 "var CLIENTIB2B_SHEET = 'ClientiB2B';\n"+
 "function saveClientiB2B(clienti) {\n"+
+"  if (!clienti || !clienti.length) return;\n"+
 "  var ss = SpreadsheetApp.getActiveSpreadsheet();\n"+
 "  var sh = ss.getSheetByName(CLIENTIB2B_SHEET);\n"+
 "  if (!sh) { sh = ss.insertSheet(CLIENTIB2B_SHEET); }\n"+
 "  sh.getRange(1,1,1,5).setValues([['id','nome','tel','note','prodotti']]).setFontWeight('bold');\n"+
 "  if (sh.getLastRow() > 1) sh.getRange(2,1,sh.getLastRow()-1,5).clearContent();\n"+
 "  var rows = clienti.map(function(c){ return [c.id, c.nome, c.tel||'', c.note||'', JSON.stringify(c.prodotti||[])]; });\n"+
-"  if (rows.length) sh.getRange(2,1,rows.length,5).setValues(rows);\n"+
+"  sh.getRange(2,1,rows.length,5).setValues(rows);\n"+
 "}\n"+
 "function getClientiB2B() {\n"+
 "  var ss = SpreadsheetApp.getActiveSpreadsheet();\n"+
@@ -2142,13 +2181,14 @@ var APPS_SCRIPT_CODE=
 "}\n"+
 "var CLIENTIB2C_SHEET = 'ClientiB2C';\n"+
 "function saveClientiB2C(clienti) {\n"+
+"  if (!clienti || !clienti.length) return;\n"+
 "  var ss = SpreadsheetApp.getActiveSpreadsheet();\n"+
 "  var sh = ss.getSheetByName(CLIENTIB2C_SHEET);\n"+
 "  if (!sh) { sh = ss.insertSheet(CLIENTIB2C_SHEET); }\n"+
 "  sh.getRange(1,1,1,4).setValues([['id','nome','tel','note']]).setFontWeight('bold');\n"+
 "  if (sh.getLastRow() > 1) sh.getRange(2,1,sh.getLastRow()-1,4).clearContent();\n"+
 "  var rows = clienti.map(function(c){ return [c.id, c.nome, c.tel||'', c.note||'']; });\n"+
-"  if (rows.length) sh.getRange(2,1,rows.length,4).setValues(rows);\n"+
+"  sh.getRange(2,1,rows.length,4).setValues(rows);\n"+
 "}\n"+
 "function getClientiB2C() {\n"+
 "  var ss = SpreadsheetApp.getActiveSpreadsheet();\n"+
@@ -2326,7 +2366,7 @@ var cbProds = []; // prodotti abituali nel form
 function saveClientiB2bLocal(){lsSet(CB2B_KEY,JSON.stringify(clientiB2b));}
 
 function pushClientiB2bToSheet(){
-  if(!cfg.sheetUrl)return;
+  if(!cfg.sheetUrl||!clientiB2b||!clientiB2b.length)return;
   postSheet({action:'clientib2b',clienti:clientiB2b}).catch(function(){});
 }
 
@@ -2346,7 +2386,7 @@ function fetchClientiB2bFromSheet(silent){
   fetch(cfg.sheetUrl+'?action=clientib2b',{cache:'no-store'})
     .then(function(r){return r.json();})
     .then(function(j){
-      if(!j||!j.ok||!Array.isArray(j.clienti))return;
+      if(!j||!j.ok||!Array.isArray(j.clienti)||!j.clienti.length)return;
       clientiB2b=j.clienti;
       saveClientiB2bLocal();
       populateB2bSelect();
@@ -2451,7 +2491,7 @@ var clienteTab='b2b';
 function saveClientiB2cLocal(){lsSet(CB2C_KEY,JSON.stringify(clientiB2c));}
 
 function pushClientiB2cToSheet(){
-  if(!cfg.sheetUrl)return;
+  if(!cfg.sheetUrl||!clientiB2c||!clientiB2c.length)return;
   postSheet({action:'clientib2c',clienti:clientiB2c}).catch(function(){});
 }
 
@@ -2460,8 +2500,8 @@ function fetchClientiB2cFromSheet(silent){
   fetch(cfg.sheetUrl+'?action=clientib2c',{cache:'no-store'})
     .then(function(r){return r.json();})
     .then(function(j){
-      if(!j||!j.ok)return;
-      clientiB2c=j.clienti||[];
+      if(!j||!j.ok||!j.clienti||!j.clienti.length)return;
+      clientiB2c=j.clienti;
       saveClientiB2cLocal();
       if(!silent)toast('Clienti B2C caricati ✓');
       if(clienteTab==='b2c')renderClienti();
@@ -3257,12 +3297,16 @@ setToday();renderAll();
 function syncTuttoOra(){
   if(!cfg.sheetUrl){toast('Nessun foglio collegato');return;}
   toast('Sincronizzazione in corso…');
-  // Prima invia tutto ciò che è in attesa
-  pushProductsToSheet(true);
-  pushAllOrdiniToSheet();
-  syncBanco(true);
+  // Invia vendite e banco in sospeso (append-only, non sovrascrivono)
   syncPending(true);
-  // Poi ricarica tutto da Sheet
+  syncBanco(true);
+  // Invia prodotti e clienti SOLO se esistono dati locali
+  if(products&&products.length)pushProductsToSheet(true);
+  if(clientiB2b&&clientiB2b.length)pushClientiB2bToSheet();
+  if(clientiB2c&&clientiB2c.length)pushClientiB2cToSheet();
+  // Invia ordini (riscrittura completa, ma contiene tutti gli ordini locali)
+  if(ordini&&ordini.length)pushAllOrdiniToSheet();
+  // Poi ricarica tutto da Sheet (fonte di verità per prodotti e catalogo)
   setTimeout(function(){
     fetchProductsFromSheet();
     fetchSalesFromSheet(true);
@@ -3272,7 +3316,23 @@ function syncTuttoOra(){
     fetchClientiB2cFromSheet(true);
     fetchOperatoriFromSheet(true);
     setTimeout(function(){toast('Sincronizzazione completata ✓')},2000);
-  },1500);
+  },2000);
+}
+
+function riscriviTutteLeVendite(){
+  if(!cfg.sheetUrl){toast('Nessun foglio collegato');return;}
+  if(!sales.length){toast('Nessuna vendita locale da inviare');return;}
+  if(!confirm('Cancella il foglio Vendite su Sheets e riscrivi tutte le '+sales.length+' vendite locali con date corrette?'))return;
+  toast('Riscrittura in corso…');
+  postSheet({action:'resyncSales',sales:sales.map(saleToPayload)}).then(function(ok){
+    if(ok){
+      sales.forEach(function(s){s.synced=true;});
+      save();
+      toast('Vendite riscritte ✓ — ora rigenera le schede analisi');
+    } else {
+      toast('Errore durante la riscrittura');
+    }
+  });
 }
 
 function syncAll(showToast){
