@@ -2685,6 +2685,7 @@ function ordCardHtml(o){
     +'<div class="oc-items">'+itemsHtml+'</div>'
     +(o.note?'<div style="font-size:12px;color:var(--ink-faint);margin-top:4px">'+esc(o.note)+'</div>':'')
     +(o.oraRitiro?'<div style="font-size:12px;color:var(--ink-soft);margin-top:3px">🕐 Ritiro: '+esc(o.oraRitiro)+'</div>':'')
+    +(o.operatore?'<div style="font-size:11px;color:var(--ink-faint);margin-top:3px">👤 '+esc(o.operatore)+'</div>':'')
     +'<div class="oc-footer">'
     +'<select class="stato-badge '+o.stato+'" onchange="setStato(\''+o.id+'\',this.value)" style="border:none;cursor:pointer;font-weight:800;font-size:11px;padding:4px 10px;border-radius:99px;text-transform:uppercase;letter-spacing:.05em;appearance:none;-webkit-appearance:none">'
     +['aperto','pronto','consegnato'].map(function(s){return '<option value="'+s+'"'+(s===o.stato?' selected':'')+'>'+s+(s===o.stato?' ✓':'')+'</option>';}).join('')
@@ -2812,7 +2813,7 @@ function buildEscPosBytes(o){
 
   // Intestazione piccola
   b(ESC,0x45,0x01); t('ORDINE  ['+(o.tipo||'B2C').toUpperCase()+']'); b(ESC,0x45,0x00); nl();
-  t((o.operatore||operatoreAttuale||'')+'  '+dateFmt+(o.oraRitiro?' ore '+o.oraRitiro:'')); nl();
+  t((o.operatore||'')+'  '+dateFmt+(o.oraRitiro?' ore '+o.oraRitiro:'')); nl();
   t('--------------------------------'); nl();
 
   // Cliente — doppia altezza
@@ -3050,7 +3051,7 @@ function saveOrdine(){
   if(ordEditId){
     var o=ordini.find(function(x){return x.id===ordEditId});
     var ora=el('oOra').value;
-    if(o){o.cliente={nome:nome,tel:el('oTel').value.trim()};o.dataConsegna=data;o.oraRitiro=ora;o.note=el('oNote').value.trim();o.items=ordItems.slice();o.tipo=ordTipo;o.operatore=operatoreAttuale||'';o.synced=false;}
+    if(o){o.cliente={nome:nome,tel:el('oTel').value.trim()};o.dataConsegna=data;o.oraRitiro=ora;o.note=el('oNote').value.trim();o.items=ordItems.slice();o.tipo=ordTipo;if(!o.operatore)o.operatore=operatoreAttuale||'';o.synced=false;}
   } else {
     var ora=el('oOra').value;
     ordini.push({id:uid(),ts:new Date().toISOString(),dataConsegna:data,oraRitiro:ora,cliente:{nome:nome,tel:el('oTel').value.trim()},items:ordItems.slice(),note:el('oNote').value.trim(),stato:'aperto',tipo:ordTipo,operatore:operatoreAttuale||'',synced:false});
