@@ -554,49 +554,37 @@
     </div>
 
     <div class="panel">
-      <h3>Catalogo prodotti <span id="prodSyncBadge"></span></h3>
-      <p class="help">Il catalogo è condiviso sul foglio Google (scheda <b>Prodotti</b>). Tutti i dispositivi collegati caricano gli stessi prodotti. Le modifiche fatte qui vengono inviate al foglio in automatico.</p>
+      <h3>Sincronizzazione</h3>
       <div id="prodSyncStatus" class="help" style="margin-bottom:10px"></div>
-      <div class="row2">
-        <button class="btn sm" onclick="fetchProductsFromSheet()">Ricarica da Sheets</button>
-        <button class="btn sm ghost" onclick="pushProductsToSheet(false)">Invia a Sheets</button>
-      </div>
-    </div>
-
-    <div class="panel">
-      <h3>Istruzioni collegamento</h3>
-      <details open>
-        <summary style="cursor:pointer;font-size:13px;font-weight:700;color:var(--accent-press)">Come collegarlo (una volta sola)</summary>
-        <ol class="help" style="padding-left:18px;line-height:1.7">
-          <li>Crea un nuovo foglio su <b>Google Sheets</b>.</li>
-          <li>Menu <b>Estensioni → Apps Script</b>.</li>
-          <li>Cancella tutto e incolla lo script qui sotto, poi <b>Salva</b>.</li>
-          <li><b>Distribuisci → Nuova distribuzione → Tipo: App web</b>. Esegui come: <i>Me stesso</i>. Accesso: <i>Chiunque</i>. Poi <b>Distribuisci</b> e autorizza.</li>
-          <li>Copia l'<b>URL dell'app web</b> (finisce con <code>/exec</code>) e incollalo nel campo sopra.</li>
-          <li>Tocca <b>Salva collegamento</b>: l'app invierà subito il catalogo prodotti al foglio e creerà la scheda <b>Prodotti</b> in automatico.</li>
-        </ol>
-        <div style="margin-top:10px">
-          <button class="btn sm ghost" onclick="copyScript()" style="margin-bottom:8px">Copia script Apps Script</button>
-          <pre id="scriptPre" style="font-size:10.5px;background:var(--surface-2);border:1px solid var(--line);border-radius:10px;padding:12px;overflow-x:auto;white-space:pre;line-height:1.5;color:var(--ink-soft);margin:0;display:none"></pre>
+      <div id="syncStatus" class="help" style="margin-bottom:10px"></div>
+      <button class="btn full" onclick="syncTuttoOra()" style="margin-bottom:10px">⬆︎⬇︎ Sincronizza tutto con Sheets</button>
+      <details style="margin-top:4px">
+        <summary style="cursor:pointer;font-size:12px;font-weight:700;color:var(--ink-faint);letter-spacing:.04em">Opzioni avanzate</summary>
+        <div style="margin-top:10px;display:flex;flex-direction:column;gap:8px">
+          <button class="btn sm ghost full" onclick="pushProductsToSheet(false)">Invia prodotti a Sheets</button>
+          <button class="btn sm ghost full" onclick="pushAllOrdiniToSheet()">Riscrivi tutti gli ordini su Sheets</button>
+          <button class="btn sm ghost full" onclick="syncNow()">Invia vendite non sincronizzate</button>
+          <button class="btn sm ghost full" onclick="buildAnalysisSheets()">📊 Rigenera schede analisi</button>
         </div>
       </details>
     </div>
+
     <div class="panel">
       <h3>Riepilogo dati</h3>
       <div id="dataStats"></div>
-      <button class="btn full sm ghost" style="margin-top:10px" onclick="fetchSalesFromSheet(false)">Carica vendite da Sheets</button>
-      <button class="btn full sm ghost" style="margin-top:8px" onclick="fetchBancoFromSheet(false)">Carica banco da Sheets</button>
-      <button class="btn full sm ghost" style="margin-top:8px" onclick="fetchOrdiniFromSheet(false)">Carica ordini da Sheets</button>
-      <button class="btn full sm ghost" style="margin-top:8px" onclick="pushAllOrdiniToSheet()">Riscrivi tutti gli ordini su Sheets</button>
-      <button class="btn full sm ghost" style="margin-top:8px" onclick="fetchClientiB2bFromSheet(false)">Carica clienti B2B da Sheets</button>
-      <button class="btn full sm ghost" style="margin-top:8px" onclick="fetchClientiB2cFromSheet(false)">Carica clienti B2C da Sheets</button>
-      <button class="btn full sm ghost" style="margin-top:8px" onclick="fetchOperatoriFromSheet(false)">Carica operatori da Sheets</button>
-      <button class="btn full sm" style="margin-top:14px" onclick="buildAnalysisSheets()">📊 Genera schede analisi su Sheets</button>
     </div>
+
+    <div class="panel">
+      <h3>Script Apps Script</h3>
+      <p class="help" style="margin-bottom:8px">Dopo ogni aggiornamento dello script, vai su Apps Script → <b>Distribuisci → Gestisci distribuzioni → ✏️ Modifica → Versione: Nuova versione → Distribuisci</b>. Senza questo passaggio le modifiche non hanno effetto.</p>
+      <button class="btn sm ghost" onclick="copyScript()" style="margin-bottom:8px">Copia script Apps Script</button>
+      <pre id="scriptPre" style="font-size:10.5px;background:var(--surface-2);border:1px solid var(--line);border-radius:10px;padding:12px;overflow-x:auto;white-space:pre;line-height:1.5;color:var(--ink-soft);margin:0;display:none"></pre>
+    </div>
+
     <div class="panel">
       <h3>Backup ed esportazione</h3>
-      <p class="help">Esporta le vendite in CSV per aprirle in Google Sheets o Excel. Il backup salva <i>tutto</i> (prodotti + vendite) in un file da reimportare.</p>
-      <button class="btn full sm" style="margin-bottom:9px" onclick="exportCSV()">Esporta vendite in CSV (Google Sheets)</button>
+      <p class="help">Il backup salva tutto (prodotti + vendite) in un file da reimportare.</p>
+      <button class="btn full sm" style="margin-bottom:9px" onclick="exportCSV()">Esporta vendite in CSV</button>
       <button class="btn full sm ghost" style="margin-bottom:9px" onclick="exportJSON()">Scarica backup completo</button>
       <button class="btn full sm ghost" onclick="document.getElementById('importFile').click()">Ripristina da backup</button>
       <input type="file" id="importFile" accept="application/json" style="display:none" onchange="importJSON(event)">
@@ -2046,35 +2034,23 @@ var APPS_SCRIPT_CODE=
 "\n"+
 "function buildSheetReparti(ss) {\n"+
 "  var sh = clearAndTitle(ss, 'Analisi Reparti', 'VENDITE PER REPARTO');\n"+
-"  sh.getRange('A3').setValue('Reparto - Totale (tutti i tempi)').setFontWeight('bold').setBackground('#E8F5E9');\n"+
-"  sh.getRange('A4').setFormula('=IFERROR(QUERY(Vendite!D:I,\"SELECT D, sum(I), sum(G) WHERE D IS NOT NULL GROUP BY D ORDER BY sum(I) DESC LABEL D \\'Reparto\\', sum(I) \\'Incasso EUR\\', sum(G) \\'Pezzi venduti\\'\",1),{\"Reparto\",\"Incasso\",\"Pz\"})' );\n"+
+"  sh.getRange('A3').setValue('Reparto - Totale').setFontWeight('bold').setBackground('#E8F5E9');\n"+
+"  sh.getRange('A4').setFormula('=IFERROR(QUERY(Vendite!A:I,\"SELECT D, sum(I), sum(G) WHERE D IS NOT NULL GROUP BY D ORDER BY sum(I) DESC LABEL D \\'Reparto\\', sum(I) \\'Incasso\\', sum(G) \\'Pz venduti\\'\",1),{\"Reparto\",\"Incasso\",\"Pz\"})' );\n"+
 "  sh.getRange('E3').setValue('Reparto - Mese corrente').setFontWeight('bold').setBackground('#C8E6C9');\n"+
-"  sh.getRange('E4').setFormula('=IFERROR(QUERY(Vendite!A:I,\"SELECT D, sum(I) WHERE D IS NOT NULL AND MONTH(A)=MONTH(NOW()) AND YEAR(A)=YEAR(NOW()) GROUP BY D ORDER BY sum(I) DESC LABEL D \\'Reparto\\', sum(I) \\'Incasso EUR\\'\",1),{\"Reparto\",\"Incasso\"})');\n"+
+"  sh.getRange('E4').setFormula('=IFERROR(QUERY(Vendite!A:I,\"SELECT D, sum(I) WHERE D IS NOT NULL AND month(A)=month(now()) AND year(A)=year(now()) GROUP BY D ORDER BY sum(I) DESC LABEL D \\'Reparto\\', sum(I) \\'Incasso\\'\",1),{\"Reparto\",\"Incasso\"})');\n"+
 "  sh.getRange('H3').setValue('Reparto - Mese scorso').setFontWeight('bold').setBackground('#DCEDC8');\n"+
-"  sh.getRange('H4').setFormula('=IFERROR(QUERY(Vendite!A:I,\"SELECT D, sum(I) WHERE D IS NOT NULL AND MONTH(A)=MONTH(DATE(YEAR(NOW()),MONTH(NOW())-1,1)) AND YEAR(A)=YEAR(DATE(YEAR(NOW()),MONTH(NOW())-1,1)) GROUP BY D ORDER BY sum(I) DESC LABEL D \\'Reparto\\', sum(I) \\'Incasso EUR\\'\",1),{\"Reparto\",\"Incasso\"})');\n"+
-"  try {\n"+
-"    var rng = sh.getRange(4,1,20,2);\n"+
-"    var existing = sh.getCharts();\n"+
-"    existing.forEach(function(c){sh.removeChart(c);});\n"+
-"    sh.insertChart(sh.newChart().setChartType(Charts.ChartType.BAR).addRange(rng).setPosition(3,11,0,0).setOption('title','Incasso per reparto (totale)').setOption('width',480).setOption('height',280).build());\n"+
-"  } catch(e) {}\n"+
+"  sh.getRange('H4').setFormula('=IFERROR(QUERY(Vendite!A:I,\"SELECT D, sum(I) WHERE D IS NOT NULL AND month(A)=month(date(year(now()),month(now())-1,1)) AND year(A)=year(date(year(now()),month(now())-1,1)) GROUP BY D ORDER BY sum(I) DESC LABEL D \\'Reparto\\', sum(I) \\'Incasso\\'\",1),{\"Reparto\",\"Incasso\"})');\n"+
 "  sh.autoResizeColumns(1,10);\n"+
 "}\n"+
 "\n"+
 "function buildSheetProdotti(ss) {\n"+
 "  var sh = clearAndTitle(ss, 'Analisi Prodotti', 'VENDITE PER PRODOTTO');\n"+
 "  sh.getRange('A3').setValue('Top prodotti - Incasso totale').setFontWeight('bold').setBackground('#E3F2FD');\n"+
-"  sh.getRange('A4').setFormula('=IFERROR(QUERY(Vendite!D:I,\"SELECT E, D, sum(I), sum(G) WHERE E IS NOT NULL GROUP BY E, D ORDER BY sum(I) DESC LIMIT 40 LABEL E \\'Prodotto\\', D \\'Reparto\\', sum(I) \\'Incasso EUR\\', sum(G) \\'Pz venduti\\'\",1),{\"Prodotto\",\"Reparto\",\"Incasso\",\"Pz\"})');\n"+
+"  sh.getRange('A4').setFormula('=IFERROR(QUERY(Vendite!A:I,\"SELECT E, D, sum(I), sum(G) WHERE E IS NOT NULL GROUP BY E, D ORDER BY sum(I) DESC LIMIT 40 LABEL E \\'Prodotto\\', D \\'Reparto\\', sum(I) \\'Incasso\\', sum(G) \\'Pz venduti\\'\",1),{\"Prodotto\",\"Reparto\",\"Incasso\",\"Pz\"})');\n"+
 "  sh.getRange('F3').setValue('Mese corrente').setFontWeight('bold').setBackground('#BBDEFB');\n"+
-"  sh.getRange('F4').setFormula('=IFERROR(QUERY(Vendite!A:I,\"SELECT E, sum(I), sum(G) WHERE E IS NOT NULL AND MONTH(A)=MONTH(NOW()) AND YEAR(A)=YEAR(NOW()) GROUP BY E ORDER BY sum(I) DESC LIMIT 40 LABEL E \\'Prodotto\\', sum(I) \\'Incasso EUR\\', sum(G) \\'Pz\\'\",1),{\"Prodotto\",\"Incasso\",\"Pz\"})');\n"+
+"  sh.getRange('F4').setFormula('=IFERROR(QUERY(Vendite!A:I,\"SELECT E, sum(I), sum(G) WHERE E IS NOT NULL AND month(A)=month(now()) AND year(A)=year(now()) GROUP BY E ORDER BY sum(I) DESC LIMIT 40 LABEL E \\'Prodotto\\', sum(I) \\'Incasso\\', sum(G) \\'Pz\\'\",1),{\"Prodotto\",\"Incasso\",\"Pz\"})');\n"+
 "  sh.getRange('J3').setValue('Mese scorso').setFontWeight('bold').setBackground('#E1F5FE');\n"+
-"  sh.getRange('J4').setFormula('=IFERROR(QUERY(Vendite!A:I,\"SELECT E, sum(I), sum(G) WHERE E IS NOT NULL AND MONTH(A)=MONTH(DATE(YEAR(NOW()),MONTH(NOW())-1,1)) AND YEAR(A)=YEAR(DATE(YEAR(NOW()),MONTH(NOW())-1,1)) GROUP BY E ORDER BY sum(I) DESC LIMIT 40 LABEL E \\'Prodotto\\', sum(I) \\'Incasso EUR\\', sum(G) \\'Pz\\'\",1),{\"Prodotto\",\"Incasso\",\"Pz\"})');\n"+
-"  try {\n"+
-"    var rng = sh.getRange(4,1,20,3);\n"+
-"    var existing = sh.getCharts();\n"+
-"    existing.forEach(function(c){sh.removeChart(c);});\n"+
-"    sh.insertChart(sh.newChart().setChartType(Charts.ChartType.BAR).addRange(rng).setPosition(3,14,0,0).setOption('title','Top prodotti per incasso').setOption('width',500).setOption('height',400).build());\n"+
-"  } catch(e) {}\n"+
+"  sh.getRange('J4').setFormula('=IFERROR(QUERY(Vendite!A:I,\"SELECT E, sum(I), sum(G) WHERE E IS NOT NULL AND month(A)=month(date(year(now()),month(now())-1,1)) AND year(A)=year(date(year(now()),month(now())-1,1)) GROUP BY E ORDER BY sum(I) DESC LIMIT 40 LABEL E \\'Prodotto\\', sum(I) \\'Incasso\\', sum(G) \\'Pz\\'\",1),{\"Prodotto\",\"Incasso\",\"Pz\"})');\n"+
 "  sh.autoResizeColumns(1,13);\n"+
 "}\n"+
 "\n"+
@@ -3173,6 +3149,27 @@ function fetchSalesFromSheet(silent){
 
 /* ============================== INIT ============================== */
 setToday();renderAll();
+function syncTuttoOra(){
+  if(!cfg.sheetUrl){toast('Nessun foglio collegato');return;}
+  toast('Sincronizzazione in corso…');
+  // Prima invia tutto ciò che è in attesa
+  pushProductsToSheet(true);
+  pushAllOrdiniToSheet();
+  syncBanco(true);
+  syncPending(true);
+  // Poi ricarica tutto da Sheet
+  setTimeout(function(){
+    fetchProductsFromSheet();
+    fetchSalesFromSheet(true);
+    fetchBancoFromSheet(true);
+    fetchOrdiniFromSheet(true);
+    fetchClientiB2bFromSheet(true);
+    fetchClientiB2cFromSheet(true);
+    fetchOperatoriFromSheet(true);
+    setTimeout(function(){toast('Sincronizzazione completata ✓')},2000);
+  },1500);
+}
+
 function syncAll(showToast){
   if(!cfg.sheetUrl)return;
   if(showToast)toast('Aggiornamento in corso…');
