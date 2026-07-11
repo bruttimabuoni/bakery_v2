@@ -1741,8 +1741,18 @@ var APPS_SCRIPT_CODE=
 "  var newRows = [];\n"+
 "  sales.forEach(function(s) {\n"+
 "    if (existingIds[s.id]) return;\n"+
+"    // Converti data stringa in oggetto Date reale (dd/MM/yyyy o yyyy-MM-dd)\n"+
+"    var dateVal;\n"+
+"    var dp = String(s.data).split('/');\n"+
+"    if (dp.length === 3) {\n"+
+"      dateVal = new Date(parseInt(dp[2]), parseInt(dp[1])-1, parseInt(dp[0]));\n"+
+"    } else {\n"+
+"      var dp2 = String(s.data).split('-');\n"+
+"      dateVal = dp2.length===3 ? new Date(parseInt(dp2[0]), parseInt(dp2[1])-1, parseInt(dp2[2])) : new Date(s.data);\n"+
+"    }\n"+
+"    if (isNaN(dateVal.getTime())) dateVal = new Date();\n"+
 "    s.rows.forEach(function(r) {\n"+
-"      newRows.push([s.data, s.ora, s.id, r[0], r[1], r[2], r[3], r[4], r[5]]);\n"+
+"      newRows.push([dateVal, s.ora, s.id, r[0], r[1], r[2], r[3], r[4], r[5]]);\n"+
 "    });\n"+
 "  });\n"+
 "  if (newRows.length) sh.getRange(sh.getLastRow()+1, 1, newRows.length, 9).setValues(newRows);\n"+
@@ -1826,40 +1836,46 @@ var APPS_SCRIPT_CODE=
 "  if (!ordini || !ordini.length) return;\n"+
 "  var ss = SpreadsheetApp.getActiveSpreadsheet();\n"+
 "  var sh = ss.getSheetByName(ORDINI_SHEET);\n"+
-"  if (!sh) {\n"+
-"    sh = ss.insertSheet(ORDINI_SHEET);\n"+
-"    sh.getRange(1,1,1,11).setValues([['ID','Data ordine','Consegna','Cliente','Telefono','Prodotto','Qty','Note prodotto','Note generali','Stato','Tipo']]).setFontWeight('bold');\n"+
-"  }\n"+
+"  // Aggiorna intestazione (sempre, per aggiungere colonne mancanti)\n"+
+"  if (!sh) sh = ss.insertSheet(ORDINI_SHEET);\n"+
+"  sh.getRange(1,1,1,12).setValues([['ID','Data ordine','Consegna','Cliente','Telefono','Prodotto','Qty','Note prodotto','Note generali','Stato','Tipo','Operatore']]).setFontWeight('bold');\n"+
 "  ordini.forEach(function(o) {\n"+
-"    var all = sh.getLastRow() > 1 ? sh.getRange(2,1,sh.getLastRow()-1,1).getValues() : [];\n"+
-"    var rowIdx = -1;\n"+
-"    for (var i=0; i<all.length; i++) { if (all[i][0]===o.id) { rowIdx=i+2; break; } }\n"+
+"    // Converti ts in data reale\n"+
+"    var tsDate = o.ts ? new Date(o.ts) : new Date();\n"+
+"    if (isNaN(tsDate.getTime())) tsDate = new Date();\n"+
+"    // Converti dataConsegna in data reale\n"+
+"    var dcDate;\n"+
+"    if (o.dataConsegna) {\n"+
+"      var dp = String(o.dataConsegna).split('-');\n"+
+"      dcDate = dp.length===3 ? new Date(parseInt(dp[0]),parseInt(dp[1])-1,parseInt(dp[2])) : new Date(o.dataConsegna);\n"+
+"      if (isNaN(dcDate.getTime())) dcDate = o.dataConsegna;\n"+
+"    } else { dcDate = ''; }\n"+
 "    var rows = o.items.map(function(it) {\n"+
-"      return [o.id, o.ts?o.ts.slice(0,10):'', o.dataConsegna, o.cliente.nome, o.cliente.tel||'', it.name, it.qty, it.note||'', o.note||'', o.stato, o.tipo||'b2c'];\n"+
+"      return [o.id, tsDate, dcDate, o.cliente.nome, o.cliente.tel||'', it.name, it.qty, it.note||'', o.note||'', o.stato, o.tipo||'b2c', o.operatore||''];\n"+
 "    });\n"+
-"    if (rowIdx > 0) {\n"+
-"      // rimuovi righe vecchie e riscrivi\n"+
-"      var toDelete = [];\n"+
+"    // Rimuovi righe esistenti con stesso id e riscrivi\n"+
+"    if (sh.getLastRow() > 1) {\n"+
 "      var allRows = sh.getDataRange().getValues();\n"+
-"      for (var i=allRows.length-1;i>=1;i--) { if (allRows[i][0]===o.id) toDelete.push(i+1); }\n"+
-"      toDelete.forEach(function(r){sh.deleteRow(r);});\n"+
+"      for (var i=allRows.length-1;i>=1;i--) { if (String(allRows[i][0])===o.id) sh.deleteRow(i+1); }\n"+
 "    }\n"+
-"    if (rows.length) sh.getRange(sh.getLastRow()+1,1,rows.length,11).setValues(rows);\n"+
+"    if (rows.length) sh.getRange(sh.getLastRow()+1,1,rows.length,12).setValues(rows);\n"+
 "  });\n"+
 "}\n"+
 "function getOrdini() {\n"+
 "  var ss = SpreadsheetApp.getActiveSpreadsheet();\n"+
 "  var sh = ss.getSheetByName(ORDINI_SHEET);\n"+
 "  if (!sh || sh.getLastRow() < 2) return {ok:true, ordini:[]};\n"+
-"  var rows = sh.getRange(2,1,sh.getLastRow()-1,11).getValues();\n"+
+"  var ncols = Math.min(sh.getLastColumn(), 12);\n"+
+"  var rows = sh.getRange(2,1,sh.getLastRow()-1,ncols).getValues();\n"+
 "  var map = {};\n"+
 "  rows.forEach(function(r) {\n"+
 "    var id = String(r[0]); if (!id) return;\n"+
 "    if (!map[id]) {\n"+
 "      var dc = r[2] instanceof Date ? Utilities.formatDate(r[2],'Europe/Rome','yyyy-MM-dd') : String(r[2]);\n"+
-"      map[id] = {id:id, ts:String(r[1]), dataConsegna:dc, cliente:{nome:String(r[3]),tel:String(r[4])}, items:[], note:String(r[8]), stato:String(r[9]), tipo:String(r[10])||'b2c', synced:true};\n"+
+"      var ts = r[1] instanceof Date ? r[1].toISOString() : (r[1]?new Date(r[1]).toISOString():new Date().toISOString());\n"+
+"      map[id] = {id:id, ts:ts, dataConsegna:dc, cliente:{nome:String(r[3]),tel:String(r[4])}, items:[], note:String(r[8]||''), stato:String(r[9]||'aperto'), tipo:String(r[10]||'b2c'), operatore:String(r[11]||''), synced:true};\n"+
 "    }\n"+
-"    map[id].items.push({name:String(r[5]), productId:'', qty:parseFloat(r[6])||1, note:String(r[7])});\n"+
+"    map[id].items.push({name:String(r[5]), productId:'', qty:parseFloat(r[6])||1, note:String(r[7]||'')});\n"+
 "  });\n"+
 "  return {ok:true, ordini:Object.keys(map).map(function(k){return map[k];})};\n"+
 "}\n"+
@@ -2029,11 +2045,11 @@ var APPS_SCRIPT_CODE=
 "function buildSheetReparti(ss) {\n"+
 "  var sh = clearAndTitle(ss, 'Analisi Reparti', 'VENDITE PER REPARTO');\n"+
 "  sh.getRange('A3').setValue('Reparto - Totale (tutti i tempi)').setFontWeight('bold').setBackground('#E8F5E9');\n"+
-"  sh.getRange('A4').setFormula('=IFERROR(QUERY(Vendite!D:I,\"SELECT D, sum(I), sum(G) WHERE D IS NOT NULL GROUP BY D ORDER BY sum(I) DESC LABEL D \\'Reparto\\', sum(I) \\'Incasso \\xe2\\x82\\xac\\', sum(G) \\'Pezzi venduti\\'\",1),{\"Reparto\",\"Incasso\",\"Pz\"})' );\n"+
+"  sh.getRange('A4').setFormula('=IFERROR(QUERY(Vendite!D:I,\"SELECT D, sum(I), sum(G) WHERE D IS NOT NULL GROUP BY D ORDER BY sum(I) DESC LABEL D \\'Reparto\\', sum(I) \\'Incasso EUR\\', sum(G) \\'Pezzi venduti\\'\",1),{\"Reparto\",\"Incasso\",\"Pz\"})' );\n"+
 "  sh.getRange('E3').setValue('Reparto - Mese corrente').setFontWeight('bold').setBackground('#C8E6C9');\n"+
-"  sh.getRange('E4').setFormula('=IFERROR(QUERY(Vendite!A:I,\"SELECT D, sum(I) WHERE D IS NOT NULL AND MONTH(A)=MONTH(NOW()) AND YEAR(A)=YEAR(NOW()) GROUP BY D ORDER BY sum(I) DESC LABEL D \\'Reparto\\', sum(I) \\'Incasso \\xe2\\x82\\xac\\'\",1),{\"Reparto\",\"Incasso\"})');\n"+
+"  sh.getRange('E4').setFormula('=IFERROR(QUERY(Vendite!A:I,\"SELECT D, sum(I) WHERE D IS NOT NULL AND MONTH(A)=MONTH(NOW()) AND YEAR(A)=YEAR(NOW()) GROUP BY D ORDER BY sum(I) DESC LABEL D \\'Reparto\\', sum(I) \\'Incasso EUR\\'\",1),{\"Reparto\",\"Incasso\"})');\n"+
 "  sh.getRange('H3').setValue('Reparto - Mese scorso').setFontWeight('bold').setBackground('#DCEDC8');\n"+
-"  sh.getRange('H4').setFormula('=IFERROR(QUERY(Vendite!A:I,\"SELECT D, sum(I) WHERE D IS NOT NULL AND MONTH(A)=MONTH(DATE(YEAR(NOW()),MONTH(NOW())-1,1)) AND YEAR(A)=YEAR(DATE(YEAR(NOW()),MONTH(NOW())-1,1)) GROUP BY D ORDER BY sum(I) DESC LABEL D \\'Reparto\\', sum(I) \\'Incasso \\xe2\\x82\\xac\\'\",1),{\"Reparto\",\"Incasso\"})');\n"+
+"  sh.getRange('H4').setFormula('=IFERROR(QUERY(Vendite!A:I,\"SELECT D, sum(I) WHERE D IS NOT NULL AND MONTH(A)=MONTH(DATE(YEAR(NOW()),MONTH(NOW())-1,1)) AND YEAR(A)=YEAR(DATE(YEAR(NOW()),MONTH(NOW())-1,1)) GROUP BY D ORDER BY sum(I) DESC LABEL D \\'Reparto\\', sum(I) \\'Incasso EUR\\'\",1),{\"Reparto\",\"Incasso\"})');\n"+
 "  try {\n"+
 "    var rng = sh.getRange(4,1,20,2);\n"+
 "    var existing = sh.getCharts();\n"+
@@ -2046,11 +2062,11 @@ var APPS_SCRIPT_CODE=
 "function buildSheetProdotti(ss) {\n"+
 "  var sh = clearAndTitle(ss, 'Analisi Prodotti', 'VENDITE PER PRODOTTO');\n"+
 "  sh.getRange('A3').setValue('Top prodotti - Incasso totale').setFontWeight('bold').setBackground('#E3F2FD');\n"+
-"  sh.getRange('A4').setFormula('=IFERROR(QUERY(Vendite!D:I,\"SELECT E, D, sum(I), sum(G) WHERE E IS NOT NULL GROUP BY E, D ORDER BY sum(I) DESC LIMIT 40 LABEL E \\'Prodotto\\', D \\'Reparto\\', sum(I) \\'Incasso \\xe2\\x82\\xac\\', sum(G) \\'Pz venduti\\'\",1),{\"Prodotto\",\"Reparto\",\"Incasso\",\"Pz\"})');\n"+
+"  sh.getRange('A4').setFormula('=IFERROR(QUERY(Vendite!D:I,\"SELECT E, D, sum(I), sum(G) WHERE E IS NOT NULL GROUP BY E, D ORDER BY sum(I) DESC LIMIT 40 LABEL E \\'Prodotto\\', D \\'Reparto\\', sum(I) \\'Incasso EUR\\', sum(G) \\'Pz venduti\\'\",1),{\"Prodotto\",\"Reparto\",\"Incasso\",\"Pz\"})');\n"+
 "  sh.getRange('F3').setValue('Mese corrente').setFontWeight('bold').setBackground('#BBDEFB');\n"+
-"  sh.getRange('F4').setFormula('=IFERROR(QUERY(Vendite!A:I,\"SELECT E, sum(I), sum(G) WHERE E IS NOT NULL AND MONTH(A)=MONTH(NOW()) AND YEAR(A)=YEAR(NOW()) GROUP BY E ORDER BY sum(I) DESC LIMIT 40 LABEL E \\'Prodotto\\', sum(I) \\'Incasso \\xe2\\x82\\xac\\', sum(G) \\'Pz\\'\",1),{\"Prodotto\",\"Incasso\",\"Pz\"})');\n"+
+"  sh.getRange('F4').setFormula('=IFERROR(QUERY(Vendite!A:I,\"SELECT E, sum(I), sum(G) WHERE E IS NOT NULL AND MONTH(A)=MONTH(NOW()) AND YEAR(A)=YEAR(NOW()) GROUP BY E ORDER BY sum(I) DESC LIMIT 40 LABEL E \\'Prodotto\\', sum(I) \\'Incasso EUR\\', sum(G) \\'Pz\\'\",1),{\"Prodotto\",\"Incasso\",\"Pz\"})');\n"+
 "  sh.getRange('J3').setValue('Mese scorso').setFontWeight('bold').setBackground('#E1F5FE');\n"+
-"  sh.getRange('J4').setFormula('=IFERROR(QUERY(Vendite!A:I,\"SELECT E, sum(I), sum(G) WHERE E IS NOT NULL AND MONTH(A)=MONTH(DATE(YEAR(NOW()),MONTH(NOW())-1,1)) AND YEAR(A)=YEAR(DATE(YEAR(NOW()),MONTH(NOW())-1,1)) GROUP BY E ORDER BY sum(I) DESC LIMIT 40 LABEL E \\'Prodotto\\', sum(I) \\'Incasso \\xe2\\x82\\xac\\', sum(G) \\'Pz\\'\",1),{\"Prodotto\",\"Incasso\",\"Pz\"})');\n"+
+"  sh.getRange('J4').setFormula('=IFERROR(QUERY(Vendite!A:I,\"SELECT E, sum(I), sum(G) WHERE E IS NOT NULL AND MONTH(A)=MONTH(DATE(YEAR(NOW()),MONTH(NOW())-1,1)) AND YEAR(A)=YEAR(DATE(YEAR(NOW()),MONTH(NOW())-1,1)) GROUP BY E ORDER BY sum(I) DESC LIMIT 40 LABEL E \\'Prodotto\\', sum(I) \\'Incasso EUR\\', sum(G) \\'Pz\\'\",1),{\"Prodotto\",\"Incasso\",\"Pz\"})');\n"+
 "  try {\n"+
 "    var rng = sh.getRange(4,1,20,3);\n"+
 "    var existing = sh.getCharts();\n"+
@@ -2064,7 +2080,7 @@ var APPS_SCRIPT_CODE=
 "  var sh = clearAndTitle(ss, 'Andamento Vendite', 'ANDAMENTO VENDITE');\n"+
 "  // Giornaliero\n"+
 "  sh.getRange('A3').setValue('Incasso giornaliero (ultimi 90 gg)').setFontWeight('bold').setBackground('#FFF3E0');\n"+
-"  sh.getRange('A4').setFormula('=IFERROR(QUERY(Vendite!A:I,\"SELECT A, sum(I), count(C) WHERE A IS NOT NULL GROUP BY A ORDER BY A DESC LIMIT 90 LABEL A \\'Data\\', sum(I) \\'Incasso \\xe2\\x82\\xac\\', count(C) \\'N. scontrini\\'\",1),{\"Data\",\"Incasso\",\"Scontrini\"})');\n"+
+"  sh.getRange('A4').setFormula('=IFERROR(QUERY(Vendite!A:I,\"SELECT A, sum(I), count(C) WHERE A IS NOT NULL GROUP BY A ORDER BY A DESC LIMIT 90 LABEL A \\'Data\\', sum(I) \\'Incasso EUR\\', count(C) \\'N. scontrini\\'\",1),{\"Data\",\"Incasso\",\"Scontrini\"})');\n"+
 "  // Per ora\n"+
 "  sh.getRange('E3').setValue('Vendite per ora del giorno').setFontWeight('bold').setBackground('#F3E5F5');\n"+
 "  sh.getRange('E4').setValue('Ora'); sh.getRange('F4').setValue('Incasso'); sh.getRange('G4').setValue('N.vendite');\n"+
@@ -2085,7 +2101,7 @@ var APPS_SCRIPT_CODE=
 "  }\n"+
 "  // Per mese\n"+
 "  sh.getRange('L3').setValue('Vendite per mese').setFontWeight('bold').setBackground('#E0F2F1');\n"+
-"  sh.getRange('L4').setFormula('=IFERROR(QUERY(Vendite!A:I,\"SELECT YEAR(A), MONTH(A), sum(I), count(C) WHERE A IS NOT NULL GROUP BY YEAR(A), MONTH(A) ORDER BY YEAR(A) DESC, MONTH(A) DESC LIMIT 24 LABEL YEAR(A) \\'Anno\\', MONTH(A) \\'Mese\\', sum(I) \\'Incasso \\xe2\\x82\\xac\\', count(C) \\'Scontrini\\'\",1),{\"Anno\",\"Mese\",\"Incasso\",\"Scontrini\"})');\n"+
+"  sh.getRange('L4').setFormula('=IFERROR(QUERY(Vendite!A:I,\"SELECT YEAR(A), MONTH(A), sum(I), count(C) WHERE A IS NOT NULL GROUP BY YEAR(A), MONTH(A) ORDER BY YEAR(A) DESC, MONTH(A) DESC LIMIT 24 LABEL YEAR(A) \\'Anno\\', MONTH(A) \\'Mese\\', sum(I) \\'Incasso EUR\\', count(C) \\'Scontrini\\'\",1),{\"Anno\",\"Mese\",\"Incasso\",\"Scontrini\"})');\n"+
 "  try {\n"+
 "    var existing = sh.getCharts(); existing.forEach(function(c){sh.removeChart(c);});\n"+
 "    sh.insertChart(sh.newChart().setChartType(Charts.ChartType.LINE).addRange(sh.getRange(4,1,91,2)).setPosition(3,16,0,0).setOption('title','Incasso giornaliero').setOption('width',520).setOption('height',280).setOption('series',{0:{color:'#E65100'}}).build());\n"+
