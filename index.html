@@ -587,6 +587,7 @@
       <button class="btn full sm ghost" style="margin-top:10px" onclick="fetchSalesFromSheet(false)">Carica vendite da Sheets</button>
       <button class="btn full sm ghost" style="margin-top:8px" onclick="fetchBancoFromSheet(false)">Carica banco da Sheets</button>
       <button class="btn full sm ghost" style="margin-top:8px" onclick="fetchOrdiniFromSheet(false)">Carica ordini da Sheets</button>
+      <button class="btn full sm ghost" style="margin-top:8px" onclick="pushAllOrdiniToSheet()">Riscrivi tutti gli ordini su Sheets</button>
       <button class="btn full sm ghost" style="margin-top:8px" onclick="fetchClientiB2bFromSheet(false)">Carica clienti B2B da Sheets</button>
       <button class="btn full sm ghost" style="margin-top:8px" onclick="fetchClientiB2cFromSheet(false)">Carica clienti B2C da Sheets</button>
       <button class="btn full sm ghost" style="margin-top:8px" onclick="fetchOperatoriFromSheet(false)">Carica operatori da Sheets</button>
@@ -1836,14 +1837,12 @@ var APPS_SCRIPT_CODE=
 "  if (!ordini || !ordini.length) return;\n"+
 "  var ss = SpreadsheetApp.getActiveSpreadsheet();\n"+
 "  var sh = ss.getSheetByName(ORDINI_SHEET);\n"+
-"  // Aggiorna intestazione (sempre, per aggiungere colonne mancanti)\n"+
 "  if (!sh) sh = ss.insertSheet(ORDINI_SHEET);\n"+
-"  sh.getRange(1,1,1,12).setValues([['ID','Data ordine','Consegna','Cliente','Telefono','Prodotto','Qty','Note prodotto','Note generali','Stato','Tipo','Operatore']]).setFontWeight('bold');\n"+
+"  var HEADERS = ['ID','Data ordine','Consegna','Ora ritiro','Cliente','Telefono','Prodotto','Qty','Note prodotto','Note generali','Stato','Tipo','Operatore'];\n"+
+"  sh.getRange(1,1,1,HEADERS.length).setValues([HEADERS]).setFontWeight('bold');\n"+
 "  ordini.forEach(function(o) {\n"+
-"    // Converti ts in data reale\n"+
 "    var tsDate = o.ts ? new Date(o.ts) : new Date();\n"+
 "    if (isNaN(tsDate.getTime())) tsDate = new Date();\n"+
-"    // Converti dataConsegna in data reale\n"+
 "    var dcDate;\n"+
 "    if (o.dataConsegna) {\n"+
 "      var dp = String(o.dataConsegna).split('-');\n"+
@@ -1851,31 +1850,34 @@ var APPS_SCRIPT_CODE=
 "      if (isNaN(dcDate.getTime())) dcDate = o.dataConsegna;\n"+
 "    } else { dcDate = ''; }\n"+
 "    var rows = o.items.map(function(it) {\n"+
-"      return [o.id, tsDate, dcDate, o.cliente.nome, o.cliente.tel||'', it.name, it.qty, it.note||'', o.note||'', o.stato, o.tipo||'b2c', o.operatore||''];\n"+
+"      return [o.id, tsDate, dcDate, o.oraRitiro||'', o.cliente.nome, o.cliente.tel||'', it.name, it.qty, it.note||'', o.note||'', o.stato, o.tipo||'b2c', o.operatore||''];\n"+
 "    });\n"+
-"    // Rimuovi righe esistenti con stesso id e riscrivi\n"+
 "    if (sh.getLastRow() > 1) {\n"+
 "      var allRows = sh.getDataRange().getValues();\n"+
 "      for (var i=allRows.length-1;i>=1;i--) { if (String(allRows[i][0])===o.id) sh.deleteRow(i+1); }\n"+
 "    }\n"+
-"    if (rows.length) sh.getRange(sh.getLastRow()+1,1,rows.length,12).setValues(rows);\n"+
+"    if (rows.length) sh.getRange(sh.getLastRow()+1,1,rows.length,HEADERS.length).setValues(rows);\n"+
 "  });\n"+
 "}\n"+
 "function getOrdini() {\n"+
 "  var ss = SpreadsheetApp.getActiveSpreadsheet();\n"+
 "  var sh = ss.getSheetByName(ORDINI_SHEET);\n"+
 "  if (!sh || sh.getLastRow() < 2) return {ok:true, ordini:[]};\n"+
-"  var ncols = Math.min(sh.getLastColumn(), 12);\n"+
+"  var ncols = Math.max(11, Math.min(sh.getLastColumn(), 13));\n"+
 "  var rows = sh.getRange(2,1,sh.getLastRow()-1,ncols).getValues();\n"+
 "  var map = {};\n"+
+"  // Rileva se il foglio ha il vecchio formato (11 col) o nuovo (13 col con Ora ritiro)\n"+
+"  var hasOra = ncols >= 13;\n"+
 "  rows.forEach(function(r) {\n"+
 "    var id = String(r[0]); if (!id) return;\n"+
 "    if (!map[id]) {\n"+
 "      var dc = r[2] instanceof Date ? Utilities.formatDate(r[2],'Europe/Rome','yyyy-MM-dd') : String(r[2]);\n"+
-"      var ts = r[1] instanceof Date ? r[1].toISOString() : (r[1]?new Date(r[1]).toISOString():new Date().toISOString());\n"+
-"      map[id] = {id:id, ts:ts, dataConsegna:dc, cliente:{nome:String(r[3]),tel:String(r[4])}, items:[], note:String(r[8]||''), stato:String(r[9]||'aperto'), tipo:String(r[10]||'b2c'), operatore:String(r[11]||''), synced:true};\n"+
+"      var ts = r[1] instanceof Date ? r[1].toISOString() : (r[1]?new Date(String(r[1])).toISOString():new Date().toISOString());\n"+
+"      var ora=hasOra?String(r[3]||''):'', cli=hasOra?4:3, tel=hasOra?5:4, prod=hasOra?6:5, qty=hasOra?7:6, np=hasOra?8:7, ng=hasOra?9:8, stato=hasOra?10:9, tipo=hasOra?11:10, op=hasOra?12:11;\n"+
+"      map[id] = {id:id, ts:ts, dataConsegna:dc, oraRitiro:ora, cliente:{nome:String(r[cli]),tel:String(r[tel])}, items:[], note:String(r[ng]||''), stato:String(r[stato]||'aperto'), tipo:String(r[tipo]||'b2c'), operatore:String(r[op]||''), synced:true};\n"+
 "    }\n"+
-"    map[id].items.push({name:String(r[5]), productId:'', qty:parseFloat(r[6])||1, note:String(r[7]||'')});\n"+
+"    var prod=hasOra?6:5, qty=hasOra?7:6, np=hasOra?8:7;\n"+
+"    map[id].items.push({name:String(r[prod]), productId:'', qty:parseFloat(r[qty])||1, note:String(r[np]||'')});\n"+
 "  });\n"+
 "  return {ok:true, ordini:Object.keys(map).map(function(k){return map[k];})};\n"+
 "}\n"+
@@ -3081,6 +3083,16 @@ function deleteOrdine(){
   ordini=ordini.filter(function(o){return o.id!==ordEditId});
   saveOrdiniLocal();closeSheets();renderOrdini();
   postSheet({action:'deleteOrdine',id:ordEditId}).catch(function(){});
+}
+
+function pushAllOrdiniToSheet(){
+  if(!cfg.sheetUrl){toast('Nessun foglio collegato');return;}
+  if(!ordini.length){toast('Nessun ordine da inviare');return;}
+  toast('Invio tutti gli ordini…');
+  postSheet({action:'ordini',ordini:ordini}).then(function(ok){
+    if(ok){ordini.forEach(function(o){o.synced=true});saveOrdiniLocal();toast('Ordini riscritti su Sheets ✓');}
+    else toast('Errore durante l\'invio');
+  });
 }
 
 function syncOrdini(silent){
