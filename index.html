@@ -364,7 +364,20 @@
   </header>
 
   <!-- ============ VENDITA ============ -->
+  <!-- Modal selezione operatore -->
+  <div id="operatoreModal" style="display:none;position:fixed;inset:0;z-index:200;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center">
+    <div style="background:var(--surface);border-radius:20px;padding:24px 20px;width:min(340px,92vw);box-shadow:0 8px 40px rgba(0,0,0,.3)">
+      <h3 style="margin:0 0 16px;font-size:18px">Chi sta usando l'app?</h3>
+      <div id="operatoreList" style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px"></div>
+      <button class="btn ghost sm full" onclick="aggiungiOperatore()">+ Nuovo operatore</button>
+    </div>
+  </div>
+
   <section class="view on" id="view-vendita">
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 16px 0">
+      <span style="font-size:12px;color:var(--ink-faint)">Operatore:</span>
+      <button onclick="showOperatoreModal()" style="background:none;border:none;font-size:13px;font-weight:700;color:var(--accent);cursor:pointer;padding:4px 0" id="operatoreBadge">— seleziona —</button>
+    </div>
     <div class="display">
       <div class="lbl">Totale vendita in corso</div>
       <div class="amt" id="liveTotal">€ 0,00</div>
@@ -389,6 +402,11 @@
     <div class="panel"><h3>Per reparto</h3><div id="byReparto"></div></div>
     <div class="panel"><h3>Prodotti più venduti</h3><div id="topProd"></div></div>
     <div class="panel"><h3>Ultimi scontrini <span id="receiptsCount"></span></h3><div id="recentReceipts"></div></div>
+    <div class="panel" id="prodGiornoPanel" style="display:none">
+      <h3>🧑‍🍳 Produzione di domani — <span id="prodGiornoTitle" style="font-weight:400;color:var(--ink-soft)"></span></h3>
+      <div id="prodGiornoList"></div>
+      <p style="font-size:11px;color:var(--ink-faint);margin-top:10px;line-height:1.4">Basato sullo storico banco, con correttivo per giorno della settimana. Migliora con l'aumentare dei dati.</p>
+    </div>
     <div class="panel" id="bancoAnalysisPanel" style="display:none">
       <h3>Analisi banco <span id="bancoAnalysisPeriod"></span></h3>
       <div id="bancoAnalysis"></div>
@@ -482,6 +500,8 @@
       <button class="btn full sm ghost" style="margin-top:8px" onclick="fetchBancoFromSheet(false)">Carica banco da Sheets</button>
       <button class="btn full sm ghost" style="margin-top:8px" onclick="fetchOrdiniFromSheet(false)">Carica ordini da Sheets</button>
       <button class="btn full sm ghost" style="margin-top:8px" onclick="fetchClientiB2bFromSheet(false)">Carica clienti B2B da Sheets</button>
+      <button class="btn full sm ghost" style="margin-top:8px" onclick="fetchOperatoriFromSheet(false)">Carica operatori da Sheets</button>
+      <button class="btn full sm" style="margin-top:14px" onclick="buildAnalysisSheets()">📊 Genera schede analisi su Sheets</button>
     </div>
     <div class="panel">
       <h3>Backup ed esportazione</h3>
@@ -559,7 +579,10 @@
     </div>
     <div class="field"><label>Nome cliente / azienda</label><input id="oNome" placeholder="es. Mario Rossi" autocomplete="off"></div>
     <div class="field"><label>Telefono</label><input id="oTel" type="tel" placeholder="es. 333 1234567" autocomplete="off"></div>
-    <div class="field"><label>Data consegna</label><input id="oData" type="date"></div>
+    <div style="display:flex;gap:10px">
+      <div class="field" style="flex:1"><label>Data consegna</label><input id="oData" type="date"></div>
+      <div class="field" style="width:110px"><label>Ora ritiro</label><input id="oOra" type="time" placeholder="es. 10:30"></div>
+    </div>
     <div class="field"><label>Note generali</label><input id="oNote" placeholder="es. Pagato in anticipo" autocomplete="off"></div>
     <div style="font-size:12px;font-weight:700;color:var(--ink-soft);margin-bottom:8px;letter-spacing:.02em">PRODOTTI</div>
     <div id="ordItemsWrap"></div>
@@ -640,6 +663,55 @@ function lsSet(k,v){try{localStorage.setItem(k,v)}catch(e){mem[k]=v}}
 function lsDel(k){try{localStorage.removeItem(k)}catch(e){delete mem[k]}}
 
 var PKEY='forno_products_v2', SKEY='forno_sales_v1', CKEY='forno_cfg_v1';
+
+/* ===== OPERATORE ===== */
+var operatori = load('forno_operatori_v1', []);
+var operatoreAttuale = load('forno_op_attuale_v1', '');
+function saveOperatori(){lsSet('forno_operatori_v1',JSON.stringify(operatori));}
+function saveOperatoreAttuale(){lsSet('forno_op_attuale_v1',operatoreAttuale);}
+
+function pushOperatoriToSheet(){
+  if(!cfg.sheetUrl)return;
+  postSheet({action:'operatori',operatori:operatori}).catch(function(){});
+}
+function fetchOperatoriFromSheet(silent){
+  if(!cfg.sheetUrl)return;
+  fetch(cfg.sheetUrl+'?action=operatori',{cache:'no-store'})
+    .then(function(r){return r.json();})
+    .then(function(j){
+      if(!j||!j.ok||!Array.isArray(j.operatori))return;
+      operatori=j.operatori;
+      saveOperatori();
+      if(!silent)toast('Operatori aggiornati ✓');
+    }).catch(function(){});
+}
+
+function showOperatoreModal(){
+  var modal=el('operatoreModal');
+  modal.style.display='flex';
+  el('operatoreList').innerHTML=operatori.map(function(op){
+    var isActive=op===operatoreAttuale;
+    return '<button onclick="selezionaOperatore(\''+esc(op)+'\')" style="padding:14px;border-radius:12px;border:2px solid '+(isActive?'var(--accent)':'var(--line)')+';background:'+(isActive?'var(--accent-soft)':'var(--surface-2)')+';font-size:16px;font-weight:'+(isActive?'700':'400')+';text-align:left;cursor:pointer">'+esc(op)+(isActive?' ✓':'')+'</button>';
+  }).join('');
+}
+function selezionaOperatore(op){
+  operatoreAttuale=op;
+  saveOperatoreAttuale();
+  el('operatoreBadge').textContent=op;
+  el('operatoreModal').style.display='none';
+}
+function aggiungiOperatore(){
+  var nome=prompt('Nome operatore:');
+  if(!nome||!nome.trim())return;
+  nome=nome.trim();
+  if(operatori.indexOf(nome)<0){operatori.push(nome);saveOperatori();pushOperatoriToSheet();}
+  selezionaOperatore(nome);
+}
+// Chiudi modal cliccando fuori
+el('operatoreModal').addEventListener('click',function(e){if(e.target===this)this.style.display='none';});
+// Inizializza badge
+if(operatoreAttuale) el('operatoreBadge').textContent=operatoreAttuale;
+else setTimeout(showOperatoreModal, 800);
 
 var cfg=load(CKEY,null)||{sheetUrl:'',auto:true,lastSync:null,lastProdSync:null};
 if(!('lastProdSync' in cfg))cfg.lastProdSync=null;
@@ -906,6 +978,7 @@ function renderReport(){
   renderByReparto(cur,agg.rev);
   renderTopProd(cur);
   renderRecentReceipts(cur);
+  renderProduzioneGiorno();
   renderBancoAnalysis(r);
 }
 function kpiCard(l,v,d){return '<div class="kpi"><div class="kl">'+l+'</div><div class="kv">'+v+'</div>'+d+'</div>'}
@@ -915,6 +988,93 @@ function fmtHour(h){
   if(h==null)return '—';
   var hh=Math.floor(h), mm=Math.round((h-hh)*60);
   return hh+':'+(mm<10?'0':'')+mm;
+}
+
+function renderProduzioneGiorno(){
+  var panel=el('prodGiornoPanel');
+  var today=new Date();
+  var tomorrowDow=(today.getDay()+1)%7;
+  var tomorrow=new Date(today);tomorrow.setDate(today.getDate()+1);
+  var GIORNI=['Domenica','Lunedi','Martedi','Mercoledi','Giovedi','Venerdi','Sabato'];
+  var domaniStr=GIORNI[tomorrowDow]+' '+tomorrow.toLocaleDateString('it-IT',{day:'numeric',month:'long'});
+
+  // Prodotti banco disponibili domani (prodotti oggi per domani)
+  var prodDomani=products.filter(function(p){
+    return p.banco!==false&&(p.days.length===0||p.days.indexOf(tomorrowDow)>=0);
+  }).sort(function(a,b){return a.name.localeCompare(b.name,'it');});
+
+  if(!prodDomani.length){panel.style.display='none';return;}
+  panel.style.display='block';
+  el('prodGiornoTitle').textContent=domaniStr;
+
+  // Costruisce storico banco: carico+rimanenze per ogni data+prodotto
+  var byKey={};
+  bancoRecords.forEach(function(r){
+    r.items.forEach(function(it){
+      var key=r.date+'|'+it.name;
+      if(!byKey[key])byKey[key]={date:r.date,name:it.name,carico:null,rimanenze:null};
+      if(r.tipo==='carico')byKey[key].carico=it.pezzi;
+      else if(r.tipo==='rimanenze')byKey[key].rimanenze=it.pezzi;
+    });
+  });
+
+  // Statistiche per prodotto, raggruppate anche per giorno settimana
+  var stats={};
+  Object.keys(byKey).forEach(function(key){
+    var d=byKey[key];if(d.carico===null)return;
+    var venduto=d.rimanenze!==null?Math.max(0,d.carico-d.rimanenze):d.carico;
+    var dow=new Date(d.date+'T12:00:00').getDay();
+    var soldOut=d.rimanenze===0;
+    if(!stats[d.name])stats[d.name]={all:[],byDow:{}};
+    stats[d.name].all.push({carico:d.carico,rimanenze:d.rimanenze,venduto:venduto,soldOut:soldOut});
+    if(!stats[d.name].byDow[dow])stats[d.name].byDow[dow]=[];
+    stats[d.name].byDow[dow].push(venduto);
+  });
+
+  var rows=prodDomani.map(function(p){
+    var s=stats[p.name];
+    if(!s||!s.all.length)return {name:p.name,rec:null,nDays:0,nDow:0,confidence:'nessun dato',alert:'nodata',dowFactor:100};
+    var n=s.all.length;
+    var avgVenduto=s.all.reduce(function(a,d){return a+d.venduto;},0)/n;
+    var pctSoldOut=s.all.filter(function(d){return d.soldOut;}).length/n;
+    var rimDays=s.all.filter(function(d){return d.rimanenze!==null;});
+    var avgRim=rimDays.length?rimDays.reduce(function(a,d){return a+d.rimanenze;},0)/rimDays.length:null;
+
+    // Correttivo giorno settimana: usa media degli stessi giorni se disponibile
+    var dowData=s.byDow[tomorrowDow]||[];
+    var dowFactor=1;
+    if(dowData.length>=2&&avgVenduto>0){
+      var dowAvg=dowData.reduce(function(a,b){return a+b;},0)/dowData.length;
+      dowFactor=dowAvg/avgVenduto;
+    }
+
+    var targetST=pctSoldOut>0.8?0.97:pctSoldOut>0.5?0.95:0.90;
+    var adj=1;
+    if(pctSoldOut>0.5)adj+=0.08;
+    if(avgRim!==null&&avgVenduto>0&&avgRim/(avgVenduto+0.01)>0.25)adj-=0.10;
+    var rec=Math.ceil((avgVenduto/targetST)*adj*dowFactor);
+
+    var alert=pctSoldOut>0.5?'danger':(avgRim!==null&&avgRim/(avgVenduto||1)>0.25?'surplus':'ok');
+    var confidence=n>=14?'alta':n>=5?'media':'bassa';
+    return {name:p.name,rec:rec,nDays:n,nDow:dowData.length,confidence:confidence,alert:alert,dowFactor:Math.round(dowFactor*100)};
+  });
+
+  var confColor={alta:'var(--kg)',media:'#F59E0B',bassa:'var(--ink-faint)'};
+  var alertColor={danger:'var(--neg)',surplus:'#F59E0B',ok:'var(--kg)',nodata:'var(--ink-faint)'};
+
+  el('prodGiornoList').innerHTML=rows.map(function(r){
+    var recHtml=r.rec!==null
+      ?'<span style="font-size:22px;font-weight:800;color:'+alertColor[r.alert]+'">'+r.rec+' pz</span>'
+      :'<span style="font-size:13px;color:var(--ink-faint)">nessun dato</span>';
+    var dowNote=r.nDow>=2?' · '+GIORNI[tomorrowDow]+' ×'+(r.dowFactor/100).toFixed(2):'';
+    var meta=r.nDays>0
+      ?'<span style="font-size:11px;color:var(--ink-faint)">'+r.nDays+' giorni rilevati · <span style="color:'+confColor[r.confidence]+'">affidabilità '+r.confidence+'</span>'+dowNote+'</span>'
+      :'<span style="font-size:11px;color:var(--ink-faint)">Inizia a registrare il banco per avere suggerimenti</span>';
+    return '<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--line)">'
+      +'<div><div style="font-weight:600;font-size:14px">'+esc(r.name)+'</div>'+meta+'</div>'
+      +'<div style="text-align:right;padding-left:12px">'+recHtml+'</div>'
+      +'</div>';
+  }).join('');
 }
 
 function renderBancoAnalysis(range){
@@ -1414,7 +1574,9 @@ var APPS_SCRIPT_CODE=
 "  if (action === 'sales')      return jsonResponse(getSales());\n"+
 "  if (action === 'banco')      return jsonResponse(getBanco());\n"+
 "  if (action === 'ordini')     return jsonResponse(getOrdini());\n"+
-"  if (action === 'clientib2b') return jsonResponse(getClientiB2B());\n"+
+"  if (action === 'clientib2b')    return jsonResponse(getClientiB2B());\n"+
+"  if (action === 'operatori')     return jsonResponse(getOperatori());\n"+
+"  if (action === 'buildanalysis') return jsonResponse(buildAnalysisSheets());\n"+
 "  return jsonResponse({ok:true, info:'Forno Vendite script attivo'});\n"+
 "}\n"+
 "\n"+
@@ -1429,6 +1591,7 @@ var APPS_SCRIPT_CODE=
 "    if (action === 'ordini')        { saveOrdini(payload.ordini); return jsonResponse({ok:true}); }\n"+
 "    if (action === 'deleteOrdine')  { deleteOrdine(payload.id); return jsonResponse({ok:true}); }\n"+
 "    if (action === 'clientib2b')    { saveClientiB2B(payload.clienti); return jsonResponse({ok:true}); }\n"+
+"    if (action === 'operatori')     { saveOperatori(payload.operatori); return jsonResponse({ok:true}); }\n"+
 "    if (payload.sales) { saveSales(payload.sales); return jsonResponse({ok:true}); }\n"+
 "    return jsonResponse({ok:false, error:'azione sconosciuta'});\n"+
 "  } catch(err) {\n"+
@@ -1445,7 +1608,7 @@ var APPS_SCRIPT_CODE=
 "  var products = rows\n"+
 "    .filter(function(r){ return r[1]; })\n"+
 "    .map(function(r){\n"+
-"      var days = r[5] ? String(r[5]).split(',').map(function(d){return parseInt(d,10);}).filter(function(n){return !isNaN(n);}) : [];\n"+
+"      var days = r[5] ? String(r[5]).replace(/\\./g,',').split(/[,;]+/).map(function(d){return parseInt(d,10);}).filter(function(n){return !isNaN(n);}) : [];\n"+
 "      return {id:r[0]||'', name:r[1], rep:r[2]||'Vari', unit:r[3]==='kg'?'kg':'pz', price:parseFloat(r[4])||0, days:days};\n"+
 "    });\n"+
 "  return {ok:true, products:products};\n"+
@@ -1461,7 +1624,7 @@ var APPS_SCRIPT_CODE=
 "  }\n"+
 "  if (sh.getLastRow() > 1) sh.getRange(2, 1, sh.getLastRow()-1, 6).clearContent();\n"+
 "  if (!products || !products.length) return;\n"+
-"  var rows = products.map(function(p){ return [p.id, p.name, p.rep, p.unit, p.price, (p.days||[]).join(',')]; });\n"+
+"  var rows = products.map(function(p){ return [p.id, p.name, p.rep, p.unit, p.price, (p.days||[]).join(';')]; });\n"+
 "  sh.getRange(2, 1, rows.length, 6).setValues(rows);\n"+
 "}\n"+
 "\n"+
@@ -1611,6 +1774,245 @@ var APPS_SCRIPT_CODE=
 "  if (!sh || sh.getLastRow() < 2) return;\n"+
 "  var all = sh.getDataRange().getValues();\n"+
 "  for (var i=all.length-1;i>=1;i--) { if (String(all[i][0])===String(id)) sh.deleteRow(i+1); }\n"+
+"}\n"+
+"\n"+
+"// ----- analisi vendite -----\n"+
+"function buildAnalysisSheets() {\n"+
+"  var ss = SpreadsheetApp.getActiveSpreadsheet();\n"+
+"  buildSheetReparti(ss);\n"+
+"  buildSheetAndamento(ss);\n"+
+"  buildSheetProdotti(ss);\n"+
+"  buildSheetBanco(ss);\n"+
+"  return {ok:true};\n"+
+"}\n"+
+"\n"+
+"function buildSheetBanco(ss) {\n"+
+"  var sh = clearAndTitle(ss, 'Analisi Banco', 'ANALISI BANCO - CONSIGLI PRODUZIONE');\n"+
+"  var bancoSh = ss.getSheetByName('Banco');\n"+
+"  if (!bancoSh || bancoSh.getLastRow() < 2) { sh.getRange('A3').setValue('Nessun dato banco. Carica almeno una settimana di dati.'); return; }\n"+
+"\n"+
+"  // Leggi banco: [id, date, tipo, nome, idProd, pezzi, pesoMedio]\n"+
+"  var bRows = bancoSh.getRange(2,1,bancoSh.getLastRow()-1,7).getValues();\n"+
+"  var byKey = {};\n"+
+"  bRows.forEach(function(r) {\n"+
+"    var date = r[1] instanceof Date ? Utilities.formatDate(r[1],'Europe/Rome','yyyy-MM-dd') : String(r[1]);\n"+
+"    var tipo = String(r[2]), name = String(r[3]), pz = parseFloat(r[5])||0;\n"+
+"    var key = date+'|'+name;\n"+
+"    if (!byKey[key]) byKey[key] = {date:date, name:name, carico:null, rimanenze:null};\n"+
+"    if (tipo==='carico') byKey[key].carico = pz;\n"+
+"    else if (tipo==='rimanenze') byKey[key].rimanenze = pz;\n"+
+"  });\n"+
+"\n"+
+"  // Raggruppa per prodotto\n"+
+"  var byProd = {};\n"+
+"  Object.keys(byKey).forEach(function(key) {\n"+
+"    var d = byKey[key];\n"+
+"    if (d.carico === null) return;\n"+
+"    var venduto = d.rimanenze !== null ? d.carico - d.rimanenze : d.carico;\n"+
+"    var dateObj = new Date(d.date + 'T12:00:00');\n"+
+"    if (!byProd[d.name]) byProd[d.name] = [];\n"+
+"    byProd[d.name].push({\n"+
+"      date: d.date,\n"+
+"      month: d.date.slice(0,7),\n"+
+"      monthNum: dateObj.getMonth()+1,\n"+
+"      carico: d.carico,\n"+
+"      rimanenze: d.rimanenze,\n"+
+"      venduto: Math.max(0, venduto),\n"+
+"      soldOut: d.rimanenze === 0\n"+
+"    });\n"+
+"  });\n"+
+"\n"+
+"  var today = new Date();\n"+
+"  var thisMonth = Utilities.formatDate(today,'Europe/Rome','yyyy-MM');\n"+
+"  var thisMonthNum = today.getMonth()+1;\n"+
+"\n"+
+"  var headers = ['Prodotto','Giorni rilevati','Carico medio','Venduto medio','Rimanenze medie','% Venduto','% Giorni esaurito','CONSIGLIO (pz)','Variazione vs media','Stagionalita','Affidabilita','Situazione'];\n"+
+"  sh.getRange(3,1,1,headers.length).setValues([headers]).setFontWeight('bold').setBackground('#ECEFF1');\n"+
+"\n"+
+"  var out = [];\n"+
+"  Object.keys(byProd).sort().forEach(function(name) {\n"+
+"    var days = byProd[name];\n"+
+"    var n = days.length;\n"+
+"    var avgCarico = days.reduce(function(s,d){return s+d.carico},0)/n;\n"+
+"    var avgVenduto = days.reduce(function(s,d){return s+d.venduto},0)/n;\n"+
+"    var daysRim = days.filter(function(d){return d.rimanenze!==null;});\n"+
+"    var avgRim = daysRim.length ? daysRim.reduce(function(s,d){return s+d.rimanenze},0)/daysRim.length : null;\n"+
+"    var pctVenduto = avgCarico>0 ? avgVenduto/avgCarico : null;\n"+
+"    var pctSoldOut = days.filter(function(d){return d.soldOut;}).length/n;\n"+
+"\n"+
+"    // Stagionalita: confronta mese corrente vs stesso mese anni precedenti\n"+
+"    var sameMonthPast = days.filter(function(d){return d.monthNum===thisMonthNum && d.month!==thisMonth;});\n"+
+"    var thisMonthDays = days.filter(function(d){return d.month===thisMonth;});\n"+
+"    var seasonFactor = 1, seasonNote = '';\n"+
+"    if (thisMonthDays.length>=3 && sameMonthPast.length>=3) {\n"+
+"      var pastAvg = sameMonthPast.reduce(function(s,d){return s+d.venduto},0)/sameMonthPast.length;\n"+
+"      var thisAvg = thisMonthDays.reduce(function(s,d){return s+d.venduto},0)/thisMonthDays.length;\n"+
+"      seasonFactor = pastAvg>0 ? thisAvg/pastAvg : 1;\n"+
+"      if (seasonFactor>1.1) seasonNote='Mese tipicamente alto ('+Math.round(seasonFactor*100-100)+'% vs media)';\n"+
+"      else if (seasonFactor<0.9) seasonNote='Mese tipicamente basso ('+Math.round(seasonFactor*100-100)+'% vs media)';\n"+
+"      else seasonNote='In linea con la media storica';\n"+
+"    } else if (thisMonthDays.length>=3) {\n"+
+"      // Confronta mese corrente vs media generale\n"+
+"      var thisAvg2 = thisMonthDays.reduce(function(s,d){return s+d.venduto},0)/thisMonthDays.length;\n"+
+"      seasonFactor = avgVenduto>0 ? thisAvg2/avgVenduto : 1;\n"+
+"      seasonNote = 'Confronto su dati parziali';\n"+
+"    } else {\n"+
+"      seasonNote = 'Dati insufficienti (< 3 gg mese)';\n"+
+"    }\n"+
+"\n"+
+"    // Correttivi automatici\n"+
+"    var targetST = 0.90;\n"+
+"    if (pctSoldOut > 0.5) targetST = 0.95;   // finisce spesso -> meno margine\n"+
+"    if (pctSoldOut > 0.8) targetST = 0.97;\n"+
+"    var adjustment = 1;\n"+
+"    if (pctSoldOut > 0.5) adjustment += 0.08;\n"+
+"    if (avgRim!==null && avgCarico>0 && avgRim/avgCarico > 0.25) adjustment -= 0.10;\n"+
+"    var rec = Math.ceil((avgVenduto / targetST) * adjustment * seasonFactor);\n"+
+"    var varVsMedia = avgCarico>0 ? Math.round((rec-avgCarico)/avgCarico*100) : 0;\n"+
+"    var varStr = (varVsMedia>=0?'+':'')+varVsMedia+'%';\n"+
+"\n"+
+"    // Alert\n"+
+"    var situazione = pctSoldOut>0.5 ? 'PRODUCI DI PIU' : (avgRim!==null && avgCarico>0 && avgRim/avgCarico>0.25 ? 'RIDUCI PRODUZIONE' : 'BILANCIATO');\n"+
+"    var confidence = n>=21 ? 'Alta' : n>=7 ? 'Media' : 'Bassa';\n"+
+"\n"+
+"    out.push([name, n,\n"+
+"      Math.round(avgCarico*10)/10,\n"+
+"      Math.round(avgVenduto*10)/10,\n"+
+"      avgRim!==null ? Math.round(avgRim*10)/10 : 'N.D.',\n"+
+"      pctVenduto!==null ? Math.round(pctVenduto*100)+'%' : 'N.D.',\n"+
+"      Math.round(pctSoldOut*100)+'%',\n"+
+"      rec, varStr, seasonNote, confidence, situazione]);\n"+
+"  });\n"+
+"\n"+
+"  if (out.length) {\n"+
+"    sh.getRange(4,1,out.length,headers.length).setValues(out);\n"+
+"    for (var i=0; i<out.length; i++) {\n"+
+"      var sit = out[i][11], recCell = sh.getRange(4+i,8), sitCell = sh.getRange(4+i,12);\n"+
+"      if (sit==='PRODUCI DI PIU')   { sitCell.setBackground('#FFEBEE').setFontColor('#C62828').setFontWeight('bold'); recCell.setBackground('#FFEBEE').setFontWeight('bold'); }\n"+
+"      else if (sit==='RIDUCI PRODUZIONE') { sitCell.setBackground('#FFF8E1').setFontColor('#E65100').setFontWeight('bold'); }\n"+
+"      else                         { sitCell.setBackground('#E8F5E9').setFontColor('#2E7D32'); }\n"+
+"      var conf = out[i][10];\n"+
+"      if (conf==='Bassa') sh.getRange(4+i,11).setFontColor('#BDBDBD');\n"+
+"      else if (conf==='Alta') sh.getRange(4+i,11).setFontColor('#388E3C');\n"+
+"    }\n"+
+"    // Grafico carico vs venduto vs consiglio\n"+
+"    try {\n"+
+"      var existing = sh.getCharts(); existing.forEach(function(c){sh.removeChart(c);});\n"+
+"      sh.insertChart(sh.newChart()\n"+
+"        .setChartType(Charts.ChartType.BAR)\n"+
+"        .addRange(sh.getRange(3,1,out.length+1,1))\n"+
+"        .addRange(sh.getRange(3,3,out.length+1,1))\n"+
+"        .addRange(sh.getRange(3,4,out.length+1,1))\n"+
+"        .addRange(sh.getRange(3,8,out.length+1,1))\n"+
+"        .setPosition(3,14,0,0)\n"+
+"        .setOption('title','Carico medio vs Venduto vs Consiglio')\n"+
+"        .setOption('width',600).setOption('height',Math.max(300,out.length*35))\n"+
+"        .build());\n"+
+"    } catch(e) {}\n"+
+"  }\n"+
+"\n"+
+"  var noteRow = out.length+6;\n"+
+"  var nota = 'METODOLOGIA: Consiglio = venduto medio / target sell-through (90-97%) x correttivi x stagionalita. '\n"+
+"    +'Affidabilita: Bassa <7 gg, Media 7-21 gg, Alta >21 gg. '\n"+
+"    +'La stagionalita si affina confrontando lo stesso mese di anni diversi man mano che i dati aumentano.';\n"+
+"  sh.getRange(noteRow,1).setValue(nota).setFontColor('#9E9E9E').setFontStyle('italic').setWrap(true);\n"+
+"  sh.getRange(noteRow,1,1,6).merge();\n"+
+"  sh.setRowHeight(noteRow,60);\n"+
+"  sh.autoResizeColumns(1,12);\n"+
+"}\n"+
+"\n"+
+"function clearAndTitle(ss, name, title) {\n"+
+"  var sh = ss.getSheetByName(name);\n"+
+"  if (!sh) sh = ss.insertSheet(name);\n"+
+"  sh.clearContents(); sh.clearFormats();\n"+
+"  sh.getRange(1,1).setValue(title).setFontSize(13).setFontWeight('bold');\n"+
+"  sh.getRange(1,2).setValue('Aggiornato: '+Utilities.formatDate(new Date(),'Europe/Rome','dd/MM/yyyy HH:mm')).setFontColor('#888888');\n"+
+"  return sh;\n"+
+"}\n"+
+"\n"+
+"function buildSheetReparti(ss) {\n"+
+"  var sh = clearAndTitle(ss, 'Analisi Reparti', 'VENDITE PER REPARTO');\n"+
+"  sh.getRange('A3').setValue('Reparto - Totale (tutti i tempi)').setFontWeight('bold').setBackground('#E8F5E9');\n"+
+"  sh.getRange('A4').setFormula('=IFERROR(QUERY(Vendite!D:I,\"SELECT D, sum(I), sum(G) WHERE D IS NOT NULL GROUP BY D ORDER BY sum(I) DESC LABEL D \\'Reparto\\', sum(I) \\'Incasso \\xe2\\x82\\xac\\', sum(G) \\'Pezzi venduti\\'\",1),{\"Reparto\",\"Incasso\",\"Pz\"})' );\n"+
+"  sh.getRange('E3').setValue('Reparto - Mese corrente').setFontWeight('bold').setBackground('#C8E6C9');\n"+
+"  sh.getRange('E4').setFormula('=IFERROR(QUERY(Vendite!A:I,\"SELECT D, sum(I) WHERE D IS NOT NULL AND MONTH(A)=MONTH(NOW()) AND YEAR(A)=YEAR(NOW()) GROUP BY D ORDER BY sum(I) DESC LABEL D \\'Reparto\\', sum(I) \\'Incasso \\xe2\\x82\\xac\\'\",1),{\"Reparto\",\"Incasso\"})');\n"+
+"  sh.getRange('H3').setValue('Reparto - Mese scorso').setFontWeight('bold').setBackground('#DCEDC8');\n"+
+"  sh.getRange('H4').setFormula('=IFERROR(QUERY(Vendite!A:I,\"SELECT D, sum(I) WHERE D IS NOT NULL AND MONTH(A)=MONTH(DATE(YEAR(NOW()),MONTH(NOW())-1,1)) AND YEAR(A)=YEAR(DATE(YEAR(NOW()),MONTH(NOW())-1,1)) GROUP BY D ORDER BY sum(I) DESC LABEL D \\'Reparto\\', sum(I) \\'Incasso \\xe2\\x82\\xac\\'\",1),{\"Reparto\",\"Incasso\"})');\n"+
+"  try {\n"+
+"    var rng = sh.getRange(4,1,20,2);\n"+
+"    var existing = sh.getCharts();\n"+
+"    existing.forEach(function(c){sh.removeChart(c);});\n"+
+"    sh.insertChart(sh.newChart().setChartType(Charts.ChartType.BAR).addRange(rng).setPosition(3,11,0,0).setOption('title','Incasso per reparto (totale)').setOption('width',480).setOption('height',280).build());\n"+
+"  } catch(e) {}\n"+
+"  sh.autoResizeColumns(1,10);\n"+
+"}\n"+
+"\n"+
+"function buildSheetProdotti(ss) {\n"+
+"  var sh = clearAndTitle(ss, 'Analisi Prodotti', 'VENDITE PER PRODOTTO');\n"+
+"  sh.getRange('A3').setValue('Top prodotti - Incasso totale').setFontWeight('bold').setBackground('#E3F2FD');\n"+
+"  sh.getRange('A4').setFormula('=IFERROR(QUERY(Vendite!D:I,\"SELECT E, D, sum(I), sum(G) WHERE E IS NOT NULL GROUP BY E, D ORDER BY sum(I) DESC LIMIT 40 LABEL E \\'Prodotto\\', D \\'Reparto\\', sum(I) \\'Incasso \\xe2\\x82\\xac\\', sum(G) \\'Pz venduti\\'\",1),{\"Prodotto\",\"Reparto\",\"Incasso\",\"Pz\"})');\n"+
+"  sh.getRange('F3').setValue('Mese corrente').setFontWeight('bold').setBackground('#BBDEFB');\n"+
+"  sh.getRange('F4').setFormula('=IFERROR(QUERY(Vendite!A:I,\"SELECT E, sum(I), sum(G) WHERE E IS NOT NULL AND MONTH(A)=MONTH(NOW()) AND YEAR(A)=YEAR(NOW()) GROUP BY E ORDER BY sum(I) DESC LIMIT 40 LABEL E \\'Prodotto\\', sum(I) \\'Incasso \\xe2\\x82\\xac\\', sum(G) \\'Pz\\'\",1),{\"Prodotto\",\"Incasso\",\"Pz\"})');\n"+
+"  sh.getRange('J3').setValue('Mese scorso').setFontWeight('bold').setBackground('#E1F5FE');\n"+
+"  sh.getRange('J4').setFormula('=IFERROR(QUERY(Vendite!A:I,\"SELECT E, sum(I), sum(G) WHERE E IS NOT NULL AND MONTH(A)=MONTH(DATE(YEAR(NOW()),MONTH(NOW())-1,1)) AND YEAR(A)=YEAR(DATE(YEAR(NOW()),MONTH(NOW())-1,1)) GROUP BY E ORDER BY sum(I) DESC LIMIT 40 LABEL E \\'Prodotto\\', sum(I) \\'Incasso \\xe2\\x82\\xac\\', sum(G) \\'Pz\\'\",1),{\"Prodotto\",\"Incasso\",\"Pz\"})');\n"+
+"  try {\n"+
+"    var rng = sh.getRange(4,1,20,3);\n"+
+"    var existing = sh.getCharts();\n"+
+"    existing.forEach(function(c){sh.removeChart(c);});\n"+
+"    sh.insertChart(sh.newChart().setChartType(Charts.ChartType.BAR).addRange(rng).setPosition(3,14,0,0).setOption('title','Top prodotti per incasso').setOption('width',500).setOption('height',400).build());\n"+
+"  } catch(e) {}\n"+
+"  sh.autoResizeColumns(1,13);\n"+
+"}\n"+
+"\n"+
+"function buildSheetAndamento(ss) {\n"+
+"  var sh = clearAndTitle(ss, 'Andamento Vendite', 'ANDAMENTO VENDITE');\n"+
+"  // Giornaliero\n"+
+"  sh.getRange('A3').setValue('Incasso giornaliero (ultimi 90 gg)').setFontWeight('bold').setBackground('#FFF3E0');\n"+
+"  sh.getRange('A4').setFormula('=IFERROR(QUERY(Vendite!A:I,\"SELECT A, sum(I), count(C) WHERE A IS NOT NULL GROUP BY A ORDER BY A DESC LIMIT 90 LABEL A \\'Data\\', sum(I) \\'Incasso \\xe2\\x82\\xac\\', count(C) \\'N. scontrini\\'\",1),{\"Data\",\"Incasso\",\"Scontrini\"})');\n"+
+"  // Per ora\n"+
+"  sh.getRange('E3').setValue('Vendite per ora del giorno').setFontWeight('bold').setBackground('#F3E5F5');\n"+
+"  sh.getRange('E4').setValue('Ora'); sh.getRange('F4').setValue('Incasso'); sh.getRange('G4').setValue('N.vendite');\n"+
+"  sh.getRange('E4:G4').setFontWeight('bold');\n"+
+"  for (var h=6; h<=20; h++) {\n"+
+"    var r = h-6+5;\n"+
+"    sh.getRange(r,5).setValue(h+':00');\n"+
+"    sh.getRange(r,6).setFormula('=SUMPRODUCT((IFERROR(VALUE(LEFT(Vendite!B$2:B,2)),99)='+h+')*(Vendite!I$2:I))');\n"+
+"    sh.getRange(r,7).setFormula('=SUMPRODUCT((IFERROR(VALUE(LEFT(Vendite!B$2:B,2)),99)='+h+')*ISNUMBER(Vendite!I$2:I)*1)');\n"+
+"  }\n"+
+"  // Per giorno settimana\n"+
+"  sh.getRange('I3').setValue('Vendite per giorno settimana').setFontWeight('bold').setBackground('#E8EAF6');\n"+
+"  sh.getRange('I4').setValue('Giorno'); sh.getRange('J4').setValue('Incasso'); sh.getRange('I4:J4').setFontWeight('bold');\n"+
+"  var GIORNI=['Lunedi','Martedi','Mercoledi','Giovedi','Venerdi','Sabato','Domenica'];\n"+
+"  for (var d=0; d<7; d++) {\n"+
+"    sh.getRange(5+d,9).setValue(GIORNI[d]);\n"+
+"    sh.getRange(5+d,10).setFormula('=IFERROR(SUMPRODUCT((WEEKDAY(Vendite!A$2:A,2)='+(d+1)+')*(Vendite!I$2:I)),0)');\n"+
+"  }\n"+
+"  // Per mese\n"+
+"  sh.getRange('L3').setValue('Vendite per mese').setFontWeight('bold').setBackground('#E0F2F1');\n"+
+"  sh.getRange('L4').setFormula('=IFERROR(QUERY(Vendite!A:I,\"SELECT YEAR(A), MONTH(A), sum(I), count(C) WHERE A IS NOT NULL GROUP BY YEAR(A), MONTH(A) ORDER BY YEAR(A) DESC, MONTH(A) DESC LIMIT 24 LABEL YEAR(A) \\'Anno\\', MONTH(A) \\'Mese\\', sum(I) \\'Incasso \\xe2\\x82\\xac\\', count(C) \\'Scontrini\\'\",1),{\"Anno\",\"Mese\",\"Incasso\",\"Scontrini\"})');\n"+
+"  try {\n"+
+"    var existing = sh.getCharts(); existing.forEach(function(c){sh.removeChart(c);});\n"+
+"    sh.insertChart(sh.newChart().setChartType(Charts.ChartType.LINE).addRange(sh.getRange(4,1,91,2)).setPosition(3,16,0,0).setOption('title','Incasso giornaliero').setOption('width',520).setOption('height',280).setOption('series',{0:{color:'#E65100'}}).build());\n"+
+"    sh.insertChart(sh.newChart().setChartType(Charts.ChartType.COLUMN).addRange(sh.getRange(4,5,16,2)).setPosition(20,16,0,0).setOption('title','Vendite per ora').setOption('width',520).setOption('height',280).build());\n"+
+"    sh.insertChart(sh.newChart().setChartType(Charts.ChartType.COLUMN).addRange(sh.getRange(4,9,8,2)).setPosition(37,16,0,0).setOption('title','Vendite per giorno della settimana').setOption('width',520).setOption('height',280).build());\n"+
+"  } catch(e) {}\n"+
+"  sh.autoResizeColumns(1,15);\n"+
+"}\n"+
+"\n"+
+"var OPERATORI_SHEET = 'Operatori';\n"+
+"function saveOperatori(operatori) {\n"+
+"  var ss = SpreadsheetApp.getActiveSpreadsheet();\n"+
+"  var sh = ss.getSheetByName(OPERATORI_SHEET);\n"+
+"  if (!sh) { sh = ss.insertSheet(OPERATORI_SHEET); sh.getRange(1,1).setValue('Nome').setFontWeight('bold'); }\n"+
+"  if (sh.getLastRow() > 1) sh.getRange(2,1,sh.getLastRow()-1,1).clearContent();\n"+
+"  if (operatori && operatori.length) sh.getRange(2,1,operatori.length,1).setValues(operatori.map(function(n){return [n];}));\n"+
+"}\n"+
+"function getOperatori() {\n"+
+"  var ss = SpreadsheetApp.getActiveSpreadsheet();\n"+
+"  var sh = ss.getSheetByName(OPERATORI_SHEET);\n"+
+"  if (!sh || sh.getLastRow() < 2) return {ok:true, operatori:[]};\n"+
+"  var rows = sh.getRange(2,1,sh.getLastRow()-1,1).getValues();\n"+
+"  return {ok:true, operatori:rows.filter(function(r){return r[0];}).map(function(r){return String(r[0]);}) };\n"+
 "}\n"+
 "\n"+
 "var CLIENTIB2B_SHEET = 'ClientiB2B';\n"+
@@ -1792,6 +2194,17 @@ function pushClientiB2bToSheet(){
   postSheet({action:'clientib2b',clienti:clientiB2b}).catch(function(){});
 }
 
+function buildAnalysisSheets(){
+  if(!cfg.sheetUrl){toast('Nessun foglio collegato');return;}
+  toast('Generazione schede analisi…');
+  fetch(cfg.sheetUrl+'?action=buildanalysis',{cache:'no-store'})
+    .then(function(r){return r.json();})
+    .then(function(j){
+      if(j&&j.ok) toast('Schede analisi create su Sheets ✓');
+      else toast('Errore nella generazione');
+    }).catch(function(){toast('Errore di connessione');});
+}
+
 function fetchClientiB2bFromSheet(silent){
   if(!cfg.sheetUrl)return;
   fetch(cfg.sheetUrl+'?action=clientib2b',{cache:'no-store'})
@@ -1950,8 +2363,11 @@ function ordCardHtml(o){
     +(o.cliente.tel?'<div class="oc-phone">📞 '+esc(o.cliente.tel)+'</div>':'')
     +'<div class="oc-items">'+itemsHtml+'</div>'
     +(o.note?'<div style="font-size:12px;color:var(--ink-faint);margin-top:4px">'+esc(o.note)+'</div>':'')
+    +(o.oraRitiro?'<div style="font-size:12px;color:var(--ink-soft);margin-top:3px">🕐 Ritiro: '+esc(o.oraRitiro)+'</div>':'')
     +'<div class="oc-footer">'
-    +'<span class="stato-badge '+o.stato+'" onclick="avanzaStato(\''+o.id+'\')">'+o.stato+' →</span>'
+    +'<select class="stato-badge '+o.stato+'" onchange="setStato(\''+o.id+'\',this.value)" style="border:none;cursor:pointer;font-weight:800;font-size:11px;padding:4px 10px;border-radius:99px;text-transform:uppercase;letter-spacing:.05em;appearance:none;-webkit-appearance:none">'
+    +['aperto','pronto','consegnato'].map(function(s){return '<option value="'+s+'"'+(s===o.stato?' selected':'')+'>'+s+(s===o.stato?' ✓':'')+'</option>';}).join('')
+    +'</select>'
     +'<div style="display:flex;gap:6px">'
     +'<button class="btn sm ghost" onclick="stampaOrdine(\''+o.id+'\')">🖨</button>'
     +'<button class="btn sm ghost" onclick="editOrdine(\''+o.id+'\')">Modifica</button>'
@@ -1961,13 +2377,14 @@ function ordCardHtml(o){
 function renderOrdini(){
   if(ordView==='calendario'){renderCalendario();return;}
 
-  var filters=[['attivi','Attivi'],['tutti','Tutti'],['consegnati','Consegnati']];
+  var filters=[['attivi','Attivi'],['pronti','Pronti'],['consegnati','Consegnati']];
   var filtersHtml='<div class="ord-filter" style="display:flex;gap:7px;margin-bottom:14px;overflow-x:auto;padding-bottom:2px">'
     +filters.map(function(f){return '<button class="chip'+(ordFilter===f[0]?' on':'')+'" onclick="setOrdFilter(\''+f[0]+'\')">'+f[1]+'</button>';}).join('')
     +'</div>';
 
   var pool=ordini.slice().sort(function(a,b){return a.dataConsegna<b.dataConsegna?-1:1});
-  if(ordFilter==='attivi') pool=pool.filter(function(o){return o.stato!=='consegnato'});
+  if(ordFilter==='attivi') pool=pool.filter(function(o){return o.stato==='aperto'});
+  if(ordFilter==='pronti') pool=pool.filter(function(o){return o.stato==='pronto'});
   if(ordFilter==='consegnati') pool=pool.filter(function(o){return o.stato==='consegnato'});
 
   if(!pool.length){
@@ -2073,7 +2490,8 @@ function buildEscPosBytes(o){
   b(ESC,0x61,0x00); // sinistra
 
   // Intestazione piccola
-  b(ESC,0x45,0x01); t('ORDINE #'+num+'  ['+(o.tipo||'B2C').toUpperCase()+']'); b(ESC,0x45,0x00); nl();
+  b(ESC,0x45,0x01); t('ORDINE  ['+(o.tipo||'B2C').toUpperCase()+']'); b(ESC,0x45,0x00); nl();
+  t((o.operatore||operatoreAttuale||'')+'  '+dateFmt+(o.oraRitiro?' ore '+o.oraRitiro:'')); nl();
   t('--------------------------------'); nl();
 
   // Cliente — doppia altezza
@@ -2178,10 +2596,10 @@ function stampaViaPdf(o){
     +'.footer{text-align:center;font-size:9px;margin-top:3mm;color:#555}@media print{@page{margin:0;size:58mm auto}body{padding:3mm 2mm}}'
     +'</style></head><body>'
     +'<h1>🥖 FORNO</h1><hr class="sep">'
-    +'<div class="lbl">Ordine</div><div class="val">#'+num+'<span class="tipo">'+(o.tipo||'b2c').toUpperCase()+'</span></div><hr class="sep">'
+    +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1mm"><span class="tipo">'+(o.tipo||'b2c').toUpperCase()+'</span><span style="font-size:10px;color:#555">'+(o.operatore||operatoreAttuale||'')+'</span></div><hr class="sep">'
     +'<div class="lbl">Cliente</div><div class="val">'+o.cliente.nome+'</div>'
     +(o.cliente.tel?'<div style="font-size:11px;margin-bottom:2mm">📞 '+o.cliente.tel+'</div>':'')
-    +'<div class="lbl">Consegna</div><div class="val" style="font-size:12px">'+dateFmt+'</div><hr class="sep">'
+    +'<div class="lbl">Consegna</div><div class="val" style="font-size:12px">'+dateFmt+(o.oraRitiro?' — ore '+o.oraRitiro:'')+'</div><hr class="sep">'
     +'<div class="lbl" style="margin-bottom:2mm">Articoli</div><table>'+itemsRows+'</table>'
     +(o.note?'<div class="note-box"><span class="lbl">Note</span><br>'+o.note+'</div>':'')
     +'<hr class="sep"><div class="footer">Stampato il '+nowFmt+'</div></body></html>';
@@ -2206,17 +2624,15 @@ function stampaOrdine(id){
   }
 }
 
-function avanzaStato(id){
+function setStato(id,stato){
   var o=ordini.find(function(x){return x.id===id});if(!o)return;
-  var stati=['aperto','pronto','consegnato'];
-  o.stato=stati[(stati.indexOf(o.stato)+1)%stati.length];
-  o.synced=false;saveOrdiniLocal();syncOrdini(true);renderOrdini();
+  o.stato=stato;o.synced=false;saveOrdiniLocal();syncOrdini(true);renderOrdini();
 }
 
 function openOrdineForm(){
   ordEditId=null;ordItems=[{productId:'',name:'',qty:1,note:''}];
   el('ordineFormTitle').textContent='Nuovo ordine';
-  el('oNome').value='';el('oTel').value='';el('oNote').value='';
+  el('oNome').value='';el('oTel').value='';el('oNote').value='';el('oOra').value='';
   el('oData').value=todayStr();
   el('delOrdBtn').style.display='none';
   el('b2bSelect').value='';
@@ -2234,6 +2650,7 @@ function editOrdine(id){
   el('oTel').value=o.cliente.tel||'';
   el('oNote').value=o.note||'';
   el('oData').value=o.dataConsegna;
+  el('oOra').value=o.oraRitiro||'';
   el('delOrdBtn').style.display='block';
   setOrdTipo(o.tipo||'b2c');
   // Pre-seleziona cliente B2B se esiste
@@ -2283,9 +2700,11 @@ function saveOrdine(){
 
   if(ordEditId){
     var o=ordini.find(function(x){return x.id===ordEditId});
-    if(o){o.cliente={nome:nome,tel:el('oTel').value.trim()};o.dataConsegna=data;o.note=el('oNote').value.trim();o.items=ordItems.slice();o.tipo=ordTipo;o.synced=false;}
+    var ora=el('oOra').value;
+    if(o){o.cliente={nome:nome,tel:el('oTel').value.trim()};o.dataConsegna=data;o.oraRitiro=ora;o.note=el('oNote').value.trim();o.items=ordItems.slice();o.tipo=ordTipo;o.operatore=operatoreAttuale||'';o.synced=false;}
   } else {
-    ordini.push({id:uid(),ts:new Date().toISOString(),dataConsegna:data,cliente:{nome:nome,tel:el('oTel').value.trim()},items:ordItems.slice(),note:el('oNote').value.trim(),stato:'aperto',tipo:ordTipo,synced:false});
+    var ora=el('oOra').value;
+    ordini.push({id:uid(),ts:new Date().toISOString(),dataConsegna:data,oraRitiro:ora,cliente:{nome:nome,tel:el('oTel').value.trim()},items:ordItems.slice(),note:el('oNote').value.trim(),stato:'aperto',tipo:ordTipo,operatore:operatoreAttuale||'',synced:false});
   }
   saveOrdiniLocal();closeSheets();syncOrdini(false);renderOrdini();
 }
@@ -2384,6 +2803,7 @@ function syncAll(showToast){
   fetchBancoFromSheet(true);
   fetchOrdiniFromSheet(true);
   fetchClientiB2bFromSheet(true);
+  fetchOperatoriFromSheet(true);
   if(cfg.auto)syncPending(true);
   syncBanco(true);
   syncOrdini(true);
