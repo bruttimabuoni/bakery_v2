@@ -2646,13 +2646,14 @@ function editOrdine(id){
   ordEditId=id;
   ordItems=o.items.map(function(i){return {productId:i.productId,name:i.name,qty:i.qty,note:i.note||''}});
   el('ordineFormTitle').textContent='Modifica ordine';
-  el('oNome').value=o.cliente.nome;
-  el('oTel').value=o.cliente.tel||'';
   el('oNote').value=o.note||'';
   el('oData').value=o.dataConsegna;
   el('oOra').value=o.oraRitiro||'';
   el('delOrdBtn').style.display='block';
   setOrdTipo(o.tipo||'b2c');
+  // Ripristina nome/tel DOPO setOrdTipo (che li azzera per b2c)
+  el('oNome').value=o.cliente.nome;
+  el('oTel').value=o.cliente.tel||'';
   // Pre-seleziona cliente B2B se esiste
   if(o.tipo==='b2b'){
     var cb=clientiB2b.find(function(c){return c.nome===o.cliente.nome;});
