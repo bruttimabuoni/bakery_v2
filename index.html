@@ -499,6 +499,20 @@
     <div id="clientiB2cList" style="display:none"></div>
   </section>
 
+  <!-- Sheet cassa ordine -->
+  <div class="sheet" id="cassaOrdineSheet">
+    <div class="grab"></div>
+    <h2>💰 Registra vendita ordine</h2>
+    <div id="cassaOrdineCliente" style="font-size:13px;color:var(--ink-soft);margin-bottom:12px"></div>
+    <div id="cassaOrdineItems"></div>
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 0;border-top:2px solid var(--line);margin-top:8px">
+      <span style="font-weight:700;font-size:15px">Totale</span>
+      <span id="cassaOrdineTotale" style="font-family:var(--mono);font-size:20px;font-weight:800;color:var(--accent)"></span>
+    </div>
+    <button class="btn full" onclick="confermaCassaOrdine()">✓ Registra e segna consegnato</button>
+    <button class="btn full ghost" style="margin-top:9px" onclick="closeSheets()">Annulla</button>
+  </div>
+
   <!-- Sheet dettaglio cliente B2C -->
   <div class="sheet" id="clienteB2cSheet">
     <div class="grab"></div>
@@ -2572,17 +2586,40 @@ function openClienteB2cForm(id,nomeDefault,telDefault){
   el('cb2cNote').value=c?c.note||'':'';
   el('delClienteB2cBtn').style.display=c?'block':'none';
 
-  // Mostra statistiche se cliente ha ordini
+  // Statistiche: ordini + vendite incassate correlate
   var lookupNome=(c?c.nome:nomeDefault||'').trim().toLowerCase();
   var ords=ordini.filter(function(o){return o.tipo!=='b2b'&&o.cliente&&lookupNome&&o.cliente.nome.trim().toLowerCase()===lookupNome;});
+  var venditeCorrelate=sales.filter(function(s){return lookupNome&&s.clienteNome&&s.clienteNome.trim().toLowerCase()===lookupNome;});
   var statsBox=el('cb2cStatsBox');
-  if(ords.length){
-    var items={};
-    ords.forEach(function(o){o.items.forEach(function(it){items[it.name]=(items[it.name]||0)+it.qty;});});
-    var top=Object.entries(items).sort(function(a,b){return b[1]-a[1];}).slice(0,5).map(function(e){return e[1]+'× '+e[0];}).join(' · ');
+  if(ords.length||venditeCorrelate.length){
+    // prodotti preferiti dagli ordini
+    var itemsCount={};
+    ords.forEach(function(o){o.items.forEach(function(it){itemsCount[it.name]=(itemsCount[it.name]||0)+it.qty;});});
+    // prodotti preferiti dalle vendite incassate
+    venditeCorrelate.forEach(function(s){(s.items||[]).forEach(function(it){itemsCount[it.name]=(itemsCount[it.name]||0)+it.qty;});});
+    var top=Object.entries(itemsCount).sort(function(a,b){return b[1]-a[1];}).slice(0,5).map(function(e){return e[1]+'\xd7 '+e[0];}).join(' · ');
+    // spesa totale e media dalle vendite incassate
+    var spesaTot=venditeCorrelate.reduce(function(s,v){return s+(v.total||0);},0);
+    var spesaMedia=venditeCorrelate.length?spesaTot/venditeCorrelate.length:0;
+    // frequenza media tra vendite (giorni)
+    var freqStr='';
+    if(venditeCorrelate.length>=2){
+      var dates=venditeCorrelate.map(function(s){return new Date(s.ts);}).sort(function(a,b){return a-b;});
+      var diffTot=0;
+      for(var di=1;di<dates.length;di++)diffTot+=(dates[di]-dates[di-1])/(1000*60*60*24);
+      var freqGg=Math.round(diffTot/(dates.length-1));
+      freqStr='ogni ~'+freqGg+' giorni · ';
+    }
     statsBox.style.display='block';
     statsBox.innerHTML='<div style="background:var(--surface-2);border-radius:11px;padding:12px;font-size:13px;color:var(--ink-soft)">'
-      +'<b>'+ords.length+' ordini registrati</b><br>'+(top?'Preferiti: '+top:'')+'</div>';
+      +'<div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:8px">'
+      +'<span><b>'+ords.length+'</b> ordini</span>'
+      +(venditeCorrelate.length?'<span><b>'+venditeCorrelate.length+'</b> acquisti incassati</span>':'')
+      +(spesaTot?'<span><b>'+money(spesaTot)+'</b> totale</span>':'')
+      +(spesaMedia&&venditeCorrelate.length>1?'<span><b>'+money(spesaMedia)+'</b> spesa media</span>':'')
+      +'</div>'
+      +(freqStr||top?'<div>'+freqStr+(top?'Preferiti: '+top:'')+'</div>':'')
+      +'</div>';
   } else {
     statsBox.style.display='none';
   }
@@ -2616,6 +2653,73 @@ function deleteClienteB2c(){
   toast('Cliente eliminato');
   closeSheets();
   renderClienti();
+}
+
+/* ============================== CASSA ORDINE ============================== */
+var cassaOrdineId=null;
+var cassaOrdineRighe=[];
+
+function openCassaOrdine(id){
+  var o=ordini.find(function(x){return x.id===id;});
+  if(!o)return;
+  cassaOrdineId=id;
+  cassaOrdineRighe=o.items.map(function(it){
+    var prod=products.find(function(p){return p.name===it.name||p.id===it.productId;});
+    return {name:it.name,qty:it.qty,price:prod?prod.price:0,note:it.note||''};
+  });
+  el('cassaOrdineCliente').textContent=(o.cliente?o.cliente.nome:'')+(o.cliente&&o.cliente.tel?' · '+o.cliente.tel:'');
+  renderCassaOrdineItems();
+  openSheet('cassaOrdineSheet');
+}
+
+function renderCassaOrdineItems(){
+  var html='';
+  cassaOrdineRighe.forEach(function(r,i){
+    html+='<div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--line)">'
+      +'<div style="flex:1;font-size:14px">'+esc(r.name)+(r.note?'<div style="font-size:11px;color:var(--ink-soft)">'+esc(r.note)+'</div>':'')+'</div>'
+      +'<div style="font-size:13px;color:var(--ink-soft);white-space:nowrap">x'+r.qty+'</div>'
+      +'<div style="display:flex;align-items:center;gap:4px">'
+      +'<input type="number" step="0.01" min="0" value="'+r.price+'" style="width:70px;text-align:right;font-family:var(--mono);padding:4px 6px;border:1px solid var(--line);border-radius:6px;background:var(--surface);color:var(--ink)" '
+      +'onchange="cassaOrdineRighe['+i+'].price=parseFloat(this.value)||0;aggCassaTotale()">'
+      +'<span style="font-size:12px;color:var(--ink-soft)">EUR</span>'
+      +'</div>'
+      +'</div>';
+  });
+  el('cassaOrdineItems').innerHTML=html;
+  aggCassaTotale();
+}
+
+function aggCassaTotale(){
+  var tot=cassaOrdineRighe.reduce(function(s,r){return s+r.price*r.qty;},0);
+  el('cassaOrdineTotale').textContent=euro(tot);
+}
+
+function confermaCassaOrdine(){
+  var o=ordini.find(function(x){return x.id===cassaOrdineId;});
+  if(!o)return;
+  var sale={
+    id:uid(),
+    ts:new Date().toISOString(),
+    synced:false,
+    items:cassaOrdineRighe.map(function(r){
+      var prod=products.find(function(p){return p.name===r.name;});
+      return {productId:prod?prod.id:'',name:r.name,rep:prod?prod.rep:'',unit:prod?prod.unit:'pz',price:r.price,qty:r.qty,total:+(r.price*r.qty).toFixed(2)};
+    }),
+    total:+cassaOrdineRighe.reduce(function(s,r){return s+r.price*r.qty;},0).toFixed(2),
+    fromOrdineId:o.id,
+    clienteNome:o.cliente?o.cliente.nome:'',
+    clienteTel:o.cliente?o.cliente.tel:''
+  };
+  sales.push(sale);
+  o.saleId=sale.id;
+  o.stato='consegnato';
+  save();
+  saveOrdiniLocal();
+  syncPending();
+  pushAllOrdiniToSheet();
+  toast('Vendita registrata · '+money(sale.total));
+  closeSheets();
+  renderOrdini();
 }
 
 /* ============================== ORDINI ============================== */
@@ -2684,6 +2788,8 @@ function ordCardHtml(o){
     +['aperto','pronto','consegnato'].map(function(s){return '<option value="'+s+'"'+(s===o.stato?' selected':'')+'>'+s+(s===o.stato?' ✓':'')+'</option>';}).join('')
     +'</select>'
     +'<div style="display:flex;gap:6px">'
+    +(o.saleId?'<span style="font-size:11px;color:var(--kg);font-weight:700;padding:4px 8px;background:var(--kg-soft);border-radius:8px">✓ Incassato</span>'
+      :'<button class="btn sm" style="background:var(--kg);font-size:12px" onclick="openCassaOrdine(\''+o.id+'\')">💰 Cassa</button>')
     +'<button class="btn sm ghost" onclick="stampaOrdine(\''+o.id+'\')">🖨</button>'
     +'<button class="btn sm ghost" onclick="editOrdine(\''+o.id+'\')">Modifica</button>'
     +'</div></div></div>';
