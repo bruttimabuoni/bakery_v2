@@ -3317,16 +3317,15 @@ setToday();renderAll();
 function syncTuttoOra(){
   if(!cfg.sheetUrl){toast('Nessun foglio collegato');return;}
   toast('Sincronizzazione in corso…');
-  // Invia vendite e banco in sospeso (append-only, non sovrascrivono)
-  syncPending(true);
-  syncBanco(true);
-  // Invia prodotti e clienti SOLO se esistono dati locali
-  if(products&&products.length)pushProductsToSheet(true);
-  if(clientiB2b&&clientiB2b.length)pushClientiB2bToSheet();
-  if(clientiB2c&&clientiB2c.length)pushClientiB2cToSheet();
-  // Invia ordini (riscrittura completa, ma contiene tutti gli ordini locali)
-  if(ordini&&ordini.length)pushAllOrdiniToSheet();
-  // Poi ricarica tutto da Sheet (fonte di verità per prodotti e catalogo)
+  // Invia solo dati append-only o esplicitamente locali
+  syncPending(true);   // vendite non sincronizzate
+  syncBanco(true);     // banco non sincronizzato
+  syncOrdini(true);    // ordini non sincronizzati
+  // NOTA: prodotti e clienti NON vengono inviati qui.
+  // I prodotti si inviano solo salvando/modificando un prodotto.
+  // I clienti si inviano solo salvando/modificando un cliente.
+  // Questo previene sovrascritture accidentali su Sheet.
+  // Legge tutto da Sheet (Sheet è fonte di verità per prodotti e clienti)
   setTimeout(function(){
     fetchProductsFromSheet();
     fetchSalesFromSheet(true);
