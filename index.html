@@ -1618,11 +1618,9 @@ var APPS_SCRIPT_CODE=
 "function saveProducts(products) {\n"+
 "  var ss = SpreadsheetApp.getActiveSpreadsheet();\n"+
 "  var sh = ss.getSheetByName(PRODUCTS_SHEET);\n"+
-"  if (!sh) {\n"+
-"    sh = ss.insertSheet(PRODUCTS_SHEET);\n"+
-"    sh.getRange(1,1,1,8).setValues([['ID','Nome','Reparto','Unita','Prezzo','Giorni (2=Mar,3=Mer,4=Gio,5=Ven,6=Sab)','Banco','Peso medio (g)']]);\n"+
-"    sh.getRange(1,1,1,8).setFontWeight('bold');\n"+
-"  }\n"+
+"  if (!sh) sh = ss.insertSheet(PRODUCTS_SHEET);\n"+
+"  sh.getRange(1,1,1,8).setValues([['ID','Nome','Reparto','Unita','Prezzo','Giorni (2=Mar,3=Mer,4=Gio,5=Ven,6=Sab)','Banco','Peso medio (g)']]);\n"+
+"  sh.getRange(1,1,1,8).setFontWeight('bold');\n"+
 "  if (sh.getLastRow() > 1) sh.getRange(2, 1, sh.getLastRow()-1, 8).clearContent();\n"+
 "  if (!products || !products.length) return;\n"+
 "  var rows = products.map(function(p){ return [p.id, p.name, p.rep, p.unit, p.price, (p.days||[]).join(';'), p.banco===false?'No':'Si', p.pesoMedio||0]; });\n"+
