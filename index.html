@@ -447,6 +447,28 @@
     <div id="ordViewContent"></div>
   </section>
 
+  <!-- ============ CLIENTI ============ -->
+  <section class="view" id="view-clienti">
+    <div class="seg" style="margin-bottom:14px">
+      <button id="clTabB2b" class="on" onclick="setClienteTab('b2b')">🏢 B2B</button>
+      <button id="clTabB2c" onclick="setClienteTab('b2c')">👤 B2C</button>
+    </div>
+    <div id="clientiB2bList"></div>
+    <div id="clientiB2cList" style="display:none"></div>
+  </section>
+
+  <!-- Sheet dettaglio cliente B2C -->
+  <div class="sheet" id="clienteB2cSheet">
+    <div class="grab"></div>
+    <h2 id="cb2cTitle">Nuovo cliente</h2>
+    <div class="field"><label>Nome</label><input id="cb2cNome" placeholder="es. Mario Rossi" autocomplete="off"></div>
+    <div class="field"><label>Telefono</label><input id="cb2cTel" type="tel" placeholder="es. 333 1234567" autocomplete="off"></div>
+    <div class="field"><label>Note</label><textarea id="cb2cNote" rows="3" placeholder="Allergie, preferenze, note varie..." style="width:100%;padding:12px;border:1.5px solid var(--line);border-radius:11px;font-size:15px;background:var(--surface-2);color:var(--ink);resize:vertical"></textarea></div>
+    <div id="cb2cStatsBox" style="display:none;margin-bottom:14px"></div>
+    <button class="btn full" onclick="saveClienteB2c()">Salva</button>
+    <button class="btn full ghost" id="delClienteB2cBtn" style="margin-top:9px;display:none" onclick="deleteClienteB2c()">Elimina cliente</button>
+  </div>
+
   <!-- ============ DATI ============ -->
   <section class="view" id="view-dati">
     <div class="panel">
@@ -500,6 +522,7 @@
       <button class="btn full sm ghost" style="margin-top:8px" onclick="fetchBancoFromSheet(false)">Carica banco da Sheets</button>
       <button class="btn full sm ghost" style="margin-top:8px" onclick="fetchOrdiniFromSheet(false)">Carica ordini da Sheets</button>
       <button class="btn full sm ghost" style="margin-top:8px" onclick="fetchClientiB2bFromSheet(false)">Carica clienti B2B da Sheets</button>
+      <button class="btn full sm ghost" style="margin-top:8px" onclick="fetchClientiB2cFromSheet(false)">Carica clienti B2C da Sheets</button>
       <button class="btn full sm ghost" style="margin-top:8px" onclick="fetchOperatoriFromSheet(false)">Carica operatori da Sheets</button>
       <button class="btn full sm" style="margin-top:14px" onclick="buildAnalysisSheets()">📊 Genera schede analisi su Sheets</button>
     </div>
@@ -546,6 +569,10 @@
     <button class="tab" data-tab="prodotti" onclick="go('prodotti')">
       <svg viewBox="0 0 24 24"><path d="M3.5 8 12 3l8.5 5v8L12 21l-8.5-5V8Z"/><path d="M3.5 8 12 13l8.5-5M12 13v8"/></svg>
       <span>Prodotti</span>
+    </button>
+    <button class="tab" data-tab="clienti" onclick="go('clienti')">
+      <svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+      <span>Clienti</span>
     </button>
     <button class="tab" data-tab="dati" onclick="go('dati')">
       <svg viewBox="0 0 24 24"><ellipse cx="12" cy="6" rx="7" ry="3"/><path d="M5 6v12c0 1.7 3.1 3 7 3s7-1.3 7-3V6"/><path d="M5 12c0 1.7 3.1 3 7 3s7-1.3 7-3"/></svg>
@@ -597,6 +624,7 @@
     <h2 id="clienteB2bTitle">Nuovo cliente B2B</h2>
     <div class="field"><label>Nome / Azienda</label><input id="cbNome" placeholder="es. Ristorante Da Mario" autocomplete="off"></div>
     <div class="field"><label>Telefono</label><input id="cbTel" type="tel" placeholder="es. 333 1234567" autocomplete="off"></div>
+    <div class="field"><label>Note</label><textarea id="cbNote" rows="2" placeholder="Allergie, orari, preferenze..." style="width:100%;padding:12px;border:1.5px solid var(--line);border-radius:11px;font-size:15px;background:var(--surface-2);color:var(--ink);resize:vertical"></textarea></div>
     <div style="font-size:12px;font-weight:700;color:var(--ink-soft);margin-bottom:8px;margin-top:4px">PRODOTTI ABITUALI</div>
     <div id="cbProdWrap"></div>
     <button class="btn ghost sm full" style="margin-bottom:14px" onclick="addCbProd()">+ Aggiungi prodotto abituale</button>
@@ -757,6 +785,7 @@ function save(){lsSet(PKEY,JSON.stringify(products));lsSet(SKEY,JSON.stringify(s
 
 /* ============================== HELPERS ============================== */
 var EUR=new Intl.NumberFormat('it-IT',{style:'currency',currency:'EUR'});
+function euro(v){return EUR.format(v||0);}
 function money(n){return EUR.format(n||0)}
 function num(n,d){return (n||0).toLocaleString('it-IT',{minimumFractionDigits:d||0,maximumFractionDigits:d||0})}
 function qtyTxt(it){return it.unit==='kg'? num(it.qty,3).replace(/,?0+$/,'')+' kg' : num(it.qty,0)+' pz'}
@@ -1575,6 +1604,7 @@ var APPS_SCRIPT_CODE=
 "  if (action === 'banco')      return jsonResponse(getBanco());\n"+
 "  if (action === 'ordini')     return jsonResponse(getOrdini());\n"+
 "  if (action === 'clientib2b')    return jsonResponse(getClientiB2B());\n"+
+"  if (action === 'clientib2c')    return jsonResponse(getClientiB2C());\n"+
 "  if (action === 'operatori')     return jsonResponse(getOperatori());\n"+
 "  if (action === 'buildanalysis') return jsonResponse(buildAnalysisSheets());\n"+
 "  return jsonResponse({ok:true, info:'Forno Vendite script attivo'});\n"+
@@ -1591,6 +1621,7 @@ var APPS_SCRIPT_CODE=
 "    if (action === 'ordini')        { saveOrdini(payload.ordini); return jsonResponse({ok:true}); }\n"+
 "    if (action === 'deleteOrdine')  { deleteOrdine(payload.id); return jsonResponse({ok:true}); }\n"+
 "    if (action === 'clientib2b')    { saveClientiB2B(payload.clienti); return jsonResponse({ok:true}); }\n"+
+"    if (action === 'clientib2c')    { saveClientiB2C(payload.clienti); return jsonResponse({ok:true}); }\n"+
 "    if (action === 'operatori')     { saveOperatori(payload.operatori); return jsonResponse({ok:true}); }\n"+
 "    if (payload.sales) { saveSales(payload.sales); return jsonResponse({ok:true}); }\n"+
 "    return jsonResponse({ok:false, error:'azione sconosciuta'});\n"+
@@ -2018,20 +2049,41 @@ var APPS_SCRIPT_CODE=
 "function saveClientiB2B(clienti) {\n"+
 "  var ss = SpreadsheetApp.getActiveSpreadsheet();\n"+
 "  var sh = ss.getSheetByName(CLIENTIB2B_SHEET);\n"+
-"  if (!sh) { sh = ss.insertSheet(CLIENTIB2B_SHEET); sh.appendRow(['id','nome','tel','prodotti']); }\n"+
-"  // Svuota e riscrivi tutto\n"+
-"  if (sh.getLastRow() > 1) sh.getRange(2,1,sh.getLastRow()-1,4).clearContent();\n"+
-"  var rows = clienti.map(function(c){ return [c.id, c.nome, c.tel||'', JSON.stringify(c.prodotti||[])]; });\n"+
-"  if (rows.length) sh.getRange(2,1,rows.length,4).setValues(rows);\n"+
+"  if (!sh) { sh = ss.insertSheet(CLIENTIB2B_SHEET); }\n"+
+"  sh.getRange(1,1,1,5).setValues([['id','nome','tel','note','prodotti']]).setFontWeight('bold');\n"+
+"  if (sh.getLastRow() > 1) sh.getRange(2,1,sh.getLastRow()-1,5).clearContent();\n"+
+"  var rows = clienti.map(function(c){ return [c.id, c.nome, c.tel||'', c.note||'', JSON.stringify(c.prodotti||[])]; });\n"+
+"  if (rows.length) sh.getRange(2,1,rows.length,5).setValues(rows);\n"+
 "}\n"+
 "function getClientiB2B() {\n"+
 "  var ss = SpreadsheetApp.getActiveSpreadsheet();\n"+
 "  var sh = ss.getSheetByName(CLIENTIB2B_SHEET);\n"+
 "  if (!sh || sh.getLastRow() < 2) return {ok:true, clienti:[]};\n"+
+"  var cols = sh.getLastColumn();\n"+
+"  var rows = sh.getRange(2,1,sh.getLastRow()-1,cols).getValues();\n"+
+"  var clienti = rows.filter(function(r){return r[0];}).map(function(r){\n"+
+"    var prod = []; try { prod = JSON.parse(r[cols>4?4:3])||[]; } catch(e){}\n"+
+"    return {id:String(r[0]), nome:String(r[1]), tel:String(r[2]), note:cols>4?String(r[3]):'', prodotti:prod};\n"+
+"  });\n"+
+"  return {ok:true, clienti:clienti};\n"+
+"}\n"+
+"var CLIENTIB2C_SHEET = 'ClientiB2C';\n"+
+"function saveClientiB2C(clienti) {\n"+
+"  var ss = SpreadsheetApp.getActiveSpreadsheet();\n"+
+"  var sh = ss.getSheetByName(CLIENTIB2C_SHEET);\n"+
+"  if (!sh) { sh = ss.insertSheet(CLIENTIB2C_SHEET); }\n"+
+"  sh.getRange(1,1,1,4).setValues([['id','nome','tel','note']]).setFontWeight('bold');\n"+
+"  if (sh.getLastRow() > 1) sh.getRange(2,1,sh.getLastRow()-1,4).clearContent();\n"+
+"  var rows = clienti.map(function(c){ return [c.id, c.nome, c.tel||'', c.note||'']; });\n"+
+"  if (rows.length) sh.getRange(2,1,rows.length,4).setValues(rows);\n"+
+"}\n"+
+"function getClientiB2C() {\n"+
+"  var ss = SpreadsheetApp.getActiveSpreadsheet();\n"+
+"  var sh = ss.getSheetByName(CLIENTIB2C_SHEET);\n"+
+"  if (!sh || sh.getLastRow() < 2) return {ok:true, clienti:[]};\n"+
 "  var rows = sh.getRange(2,1,sh.getLastRow()-1,4).getValues();\n"+
 "  var clienti = rows.filter(function(r){return r[0];}).map(function(r){\n"+
-"    var prod = []; try { prod = JSON.parse(r[3])||[]; } catch(e){}\n"+
-"    return {id:String(r[0]), nome:String(r[1]), tel:String(r[2]), prodotti:prod};\n"+
+"    return {id:String(r[0]), nome:String(r[1]), tel:String(r[2]), note:String(r[3])};\n"+
 "  });\n"+
 "  return {ok:true, clienti:clienti};\n"+
 "}\n"+
@@ -2053,7 +2105,7 @@ function copyScript(){
 }
 
 /* ============================== NAV / SHEETS ============================== */
-var TITLES={vendita:'Vendita',report:'Report',banco:'Banco',ordini:'Ordini',prodotti:'Prodotti',dati:'Dati'};
+var TITLES={vendita:'Vendita',report:'Report',banco:'Banco',ordini:'Ordini',prodotti:'Prodotti',clienti:'Clienti',dati:'Dati'};
 function go(tab){
   document.querySelectorAll('.view').forEach(function(v){v.classList.remove('on')});
   el('view-'+tab).classList.add('on');
@@ -2068,6 +2120,7 @@ function go(tab){
   if(tab==='prodotti')renderProdList();
   if(tab==='banco')renderBanco();
   if(tab==='ordini')renderOrdini();
+  if(tab==='clienti')renderClienti();
   if(tab==='dati'){renderDataStats();el('fSheetUrl').value=cfg.sheetUrl||'';el('fAuto').checked=!!cfg.auto;updateSyncUI();updateProdSyncUI();}
 }
 function openSheet(id){el('scrim').classList.add('on');el(id).classList.add('on');if(id==='cartSheet')renderCart()}
@@ -2250,12 +2303,12 @@ function openClienteB2bForm(id){
   if(id){
     var c=clientiB2b.find(function(x){return x.id===id;});
     el('clienteB2bTitle').textContent='Modifica cliente B2B';
-    el('cbNome').value=c.nome;el('cbTel').value=c.tel||'';
+    el('cbNome').value=c.nome;el('cbTel').value=c.tel||'';el('cbNote').value=c.note||'';
     cbProds=c.prodotti.map(function(p){return Object.assign({},p);});
     el('delClienteB2bBtn').style.display='block';
   } else {
     el('clienteB2bTitle').textContent='Nuovo cliente B2B';
-    el('cbNome').value='';el('cbTel').value='';
+    el('cbNome').value='';el('cbTel').value='';el('cbNote').value='';
     cbProds=[];
     el('delClienteB2bBtn').style.display='none';
   }
@@ -2280,11 +2333,12 @@ function saveClienteB2b(){
   var nome=el('cbNome').value.trim();
   if(!nome){toast('Inserisci il nome del cliente');return;}
   var prods=cbProds.filter(function(p){return p.name.trim();});
+  var note=el('cbNote').value.trim();
   if(cbEditId){
     var c=clientiB2b.find(function(x){return x.id===cbEditId;});
-    c.nome=nome;c.tel=el('cbTel').value.trim();c.prodotti=prods;
+    c.nome=nome;c.tel=el('cbTel').value.trim();c.note=note;c.prodotti=prods;
   } else {
-    clientiB2b.push({id:uid(),nome:nome,tel:el('cbTel').value.trim(),prodotti:prods});
+    clientiB2b.push({id:uid(),nome:nome,tel:el('cbTel').value.trim(),note:note,prodotti:prods});
   }
   saveClientiB2bLocal();
   pushClientiB2bToSheet();
@@ -2304,6 +2358,197 @@ function deleteClienteB2b(){
   closeSheets();
 }
 
+/* ============================== CLIENTI B2C ============================== */
+var CB2C_KEY='forno_clientib2c_v1';
+var clientiB2c=load(CB2C_KEY,[]);
+var cb2cEditId=null;
+var clienteTab='b2b';
+
+function saveClientiB2cLocal(){lsSet(CB2C_KEY,JSON.stringify(clientiB2c));}
+
+function pushClientiB2cToSheet(){
+  if(!cfg.sheetUrl)return;
+  postSheet({action:'clientib2c',clienti:clientiB2c}).catch(function(){});
+}
+
+function fetchClientiB2cFromSheet(silent){
+  if(!cfg.sheetUrl){if(!silent)toast('Nessun foglio collegato');return;}
+  fetch(cfg.sheetUrl+'?action=clientib2c',{cache:'no-store'})
+    .then(function(r){return r.json();})
+    .then(function(j){
+      if(!j||!j.ok)return;
+      clientiB2c=j.clienti||[];
+      saveClientiB2cLocal();
+      if(!silent)toast('Clienti B2C caricati ✓');
+      if(clienteTab==='b2c')renderClienti();
+    }).catch(function(){if(!silent)toast('Errore caricamento clienti B2C');});
+}
+
+function setClienteTab(t){
+  clienteTab=t;
+  el('clTabB2b').classList.toggle('on',t==='b2b');
+  el('clTabB2c').classList.toggle('on',t==='b2c');
+  el('clientiB2bList').style.display=t==='b2b'?'':'none';
+  el('clientiB2cList').style.display=t==='b2c'?'':'none';
+  renderClienti();
+}
+
+function renderClienti(){
+  if(clienteTab==='b2b') renderClientiB2bList();
+  else renderClientiB2cList();
+}
+
+function renderClientiB2bList(){
+  var wrap=el('clientiB2bList');
+  if(!clientiB2b.length){
+    wrap.innerHTML='<div class="empty"><div class="big">🏢</div>Nessun cliente B2B. Aggiungili dalla scheda Ordini.</div>';
+    return;
+  }
+  var sorted=clientiB2b.slice().sort(function(a,b){return a.nome.localeCompare(b.nome,'it');});
+  wrap.innerHTML='<div style="display:flex;justify-content:flex-end;margin-bottom:10px">'
+    +'<button class="btn sm ghost" onclick="openClienteB2bForm(null)">+ Nuovo B2B</button></div>'
+    +sorted.map(function(c){
+      // Conta ordini di questo cliente
+      var ords=ordini.filter(function(o){return o.tipo==='b2b'&&o.cliente.nome===c.nome;});
+      var ultOrd=ords.length?ords.reduce(function(a,b){return a.ts>b.ts?a:b;}).dataConsegna:'—';
+      return '<div class="panel" style="margin-bottom:10px;cursor:pointer" onclick="openClienteB2bForm(\''+c.id+'\')">'
+        +'<div style="display:flex;justify-content:space-between;align-items:flex-start">'
+        +'<div><div style="font-weight:700;font-size:15px">'+esc(c.nome)+'</div>'
+        +(c.tel?'<div style="font-size:12px;color:var(--ink-soft);margin-top:2px">📞 '+esc(c.tel)+'</div>':'')
+        +(c.note?'<div style="font-size:12px;color:var(--ink-soft);margin-top:4px;font-style:italic">'+esc(c.note)+'</div>':'')
+        +'</div>'
+        +'<div style="text-align:right;font-size:11px;color:var(--ink-faint)">'
+        +ords.length+' ordini<br>'+(ords.length?'Ult. '+ultOrd:'')+'</div>'
+        +'</div>'
+        +(c.prodotti&&c.prodotti.length?'<div style="margin-top:8px;font-size:12px;color:var(--ink-soft)">Abituali: '
+          +c.prodotti.map(function(p){return p.qty+'× '+p.name;}).join(', ')+'</div>':'')
+        +'</div>';
+    }).join('');
+}
+
+function renderClientiB2cList(){
+  var wrap=el('clientiB2cList');
+  // Aggrega statistiche dagli ordini B2C
+  var statsMap={};
+  ordini.filter(function(o){return o.tipo!=='b2b'&&o.cliente&&o.cliente.nome;}).forEach(function(o){
+    var key=o.cliente.nome.trim().toLowerCase();
+    if(!statsMap[key])statsMap[key]={nome:o.cliente.nome,tel:o.cliente.tel||'',ordini:[],items:{}};
+    statsMap[key].ordini.push(o);
+    o.items.forEach(function(it){
+      statsMap[key].items[it.name]=(statsMap[key].items[it.name]||0)+it.qty;
+    });
+  });
+
+  // Merge con schedario salvato
+  clientiB2c.forEach(function(c){
+    var key=c.nome.trim().toLowerCase();
+    if(!statsMap[key])statsMap[key]={nome:c.nome,tel:c.tel||'',ordini:[],items:{}};
+    if(!statsMap[key].note)statsMap[key].note=c.note||'';
+    if(!statsMap[key].savedId)statsMap[key].savedId=c.id;
+  });
+
+  var list=Object.values(statsMap).sort(function(a,b){
+    var la=a.ordini.length?a.ordini[a.ordini.length-1].ts:'';
+    var lb=b.ordini.length?b.ordini[b.ordini.length-1].ts:'';
+    return lb.localeCompare(la);
+  });
+
+  if(!list.length){
+    wrap.innerHTML='<div class="empty"><div class="big">👤</div>Nessun cliente B2C. Vengono aggiunti automaticamente dagli ordini.</div>';
+    return;
+  }
+
+  wrap.innerHTML='<div style="display:flex;justify-content:flex-end;margin-bottom:10px">'
+    +'<button class="btn sm ghost" onclick="openClienteB2cForm(null)">+ Nuovo B2C</button></div>'
+    +list.map(function(s){
+      var nOrd=s.ordini.length;
+      var topItems=Object.entries(s.items).sort(function(a,b){return b[1]-a[1];}).slice(0,3)
+        .map(function(e){return e[0];}).join(', ');
+      var dates=s.ordini.map(function(o){return o.dataConsegna||o.ts||'';}).filter(Boolean).sort();
+      var spese=s.ordini.reduce(function(tot,o){return tot+(o.total||0);},0);
+      var mediaSpesa=nOrd>0?spese/nOrd:0;
+      var freqGg='—';
+      if(dates.length>=2){
+        var d0=new Date(dates[0]),d1=new Date(dates[dates.length-1]);
+        var gg=Math.round((d1-d0)/(1000*60*60*24));
+        freqGg=gg>0?'ogni ~'+Math.round(gg/(dates.length-1))+' gg':'—';
+      }
+      var id=s.savedId||'';
+      return '<div class="panel" style="margin-bottom:10px;cursor:pointer" onclick="openClienteB2cForm(\''+esc(id)+'\',\''+esc(s.nome)+'\',\''+esc(s.tel)+'\')">'
+        +'<div style="display:flex;justify-content:space-between;align-items:flex-start">'
+        +'<div><div style="font-weight:700;font-size:15px">'+esc(s.nome)+'</div>'
+        +(s.tel?'<div style="font-size:12px;color:var(--ink-soft);margin-top:2px">📞 '+esc(s.tel)+'</div>':'')
+        +(s.note?'<div style="font-size:12px;color:var(--ink-soft);margin-top:4px;font-style:italic">'+esc(s.note)+'</div>':'')
+        +'</div>'
+        +'<div style="text-align:right;font-size:11px;color:var(--ink-faint)">'+nOrd+' ordini</div>'
+        +'</div>'
+        +(nOrd>0?'<div style="margin-top:10px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px">'
+          +'<div style="background:var(--surface-2);border-radius:9px;padding:7px 8px;text-align:center"><div style="font-size:10px;color:var(--ink-faint)">Frequenza</div><div style="font-weight:700;font-size:13px">'+freqGg+'</div></div>'
+          +'<div style="background:var(--surface-2);border-radius:9px;padding:7px 8px;text-align:center"><div style="font-size:10px;color:var(--ink-faint)">Spesa media</div><div style="font-weight:700;font-size:13px">'+euro(mediaSpesa)+'</div></div>'
+          +'<div style="background:var(--surface-2);border-radius:9px;padding:7px 8px;text-align:center"><div style="font-size:10px;color:var(--ink-faint)">Tot. ordini</div><div style="font-weight:700;font-size:13px">'+euro(spese)+'</div></div>'
+          +'</div>'
+          +(topItems?'<div style="font-size:12px;color:var(--ink-soft);margin-top:8px">Preferiti: '+esc(topItems)+'</div>':'')
+        :'')
+        +'</div>';
+    }).join('');
+}
+
+function openClienteB2cForm(id,nomeDefault,telDefault){
+  cb2cEditId=id||null;
+  var c=id?clientiB2c.find(function(x){return x.id===id;}):null;
+  el('cb2cTitle').textContent=c?'Modifica cliente':'Nuovo cliente';
+  el('cb2cNome').value=c?c.nome:(nomeDefault||'');
+  el('cb2cTel').value=c?c.tel||'':(telDefault||'');
+  el('cb2cNote').value=c?c.note||'':'';
+  el('delClienteB2cBtn').style.display=c?'block':'none';
+
+  // Mostra statistiche se cliente ha ordini
+  var lookupNome=(c?c.nome:nomeDefault||'').trim().toLowerCase();
+  var ords=ordini.filter(function(o){return o.tipo!=='b2b'&&o.cliente&&lookupNome&&o.cliente.nome.trim().toLowerCase()===lookupNome;});
+  var statsBox=el('cb2cStatsBox');
+  if(ords.length){
+    var items={};
+    ords.forEach(function(o){o.items.forEach(function(it){items[it.name]=(items[it.name]||0)+it.qty;});});
+    var top=Object.entries(items).sort(function(a,b){return b[1]-a[1];}).slice(0,5).map(function(e){return e[1]+'× '+e[0];}).join(' · ');
+    statsBox.style.display='block';
+    statsBox.innerHTML='<div style="background:var(--surface-2);border-radius:11px;padding:12px;font-size:13px;color:var(--ink-soft)">'
+      +'<b>'+ords.length+' ordini registrati</b><br>'+(top?'Preferiti: '+top:'')+'</div>';
+  } else {
+    statsBox.style.display='none';
+  }
+  openSheet('clienteB2cSheet');
+}
+
+function saveClienteB2c(){
+  var nome=el('cb2cNome').value.trim();
+  if(!nome){toast('Inserisci il nome');return;}
+  var tel=el('cb2cTel').value.trim();
+  var note=el('cb2cNote').value.trim();
+  if(cb2cEditId){
+    var c=clientiB2c.find(function(x){return x.id===cb2cEditId;});
+    if(c){c.nome=nome;c.tel=tel;c.note=note;}
+  } else {
+    clientiB2c.push({id:uid(),nome:nome,tel:tel,note:note});
+  }
+  saveClientiB2cLocal();
+  pushClientiB2cToSheet();
+  toast('Cliente salvato ✓');
+  closeSheets();
+  renderClienti();
+}
+
+function deleteClienteB2c(){
+  if(!cb2cEditId)return;
+  if(!confirm('Eliminare questo cliente?'))return;
+  clientiB2c=clientiB2c.filter(function(x){return x.id!==cb2cEditId;});
+  saveClientiB2cLocal();
+  pushClientiB2cToSheet();
+  toast('Cliente eliminato');
+  closeSheets();
+  renderClienti();
+}
+
+/* ============================== ORDINI ============================== */
 var OKEY='forno_ordini_v1';
 
 // Normalizza qualsiasi formato data a yyyy-MM-dd
@@ -2803,6 +3048,7 @@ function syncAll(showToast){
   fetchBancoFromSheet(true);
   fetchOrdiniFromSheet(true);
   fetchClientiB2bFromSheet(true);
+  fetchClientiB2cFromSheet(true);
   fetchOperatoriFromSheet(true);
   if(cfg.auto)syncPending(true);
   syncBanco(true);
