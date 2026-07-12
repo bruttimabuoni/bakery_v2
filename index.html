@@ -502,15 +502,18 @@
   <!-- Sheet cassa ordine -->
   <div class="sheet" id="cassaOrdineSheet">
     <div class="grab"></div>
-    <h2>💰 Registra vendita ordine</h2>
+    <h2>💰 Prezzi ordine</h2>
     <div id="cassaOrdineCliente" style="font-size:13px;color:var(--ink-soft);margin-bottom:12px"></div>
     <div id="cassaOrdineItems"></div>
     <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 0;border-top:2px solid var(--line);margin-top:8px">
       <span style="font-weight:700;font-size:15px">Totale</span>
       <span id="cassaOrdineTotale" style="font-family:var(--mono);font-size:20px;font-weight:800;color:var(--accent)"></span>
     </div>
-    <button class="btn full" onclick="confermaCassaOrdine()">✓ Registra e segna consegnato</button>
-    <button class="btn full ghost" style="margin-top:9px" onclick="closeSheets()">Annulla</button>
+    <div style="display:flex;gap:9px;margin-bottom:9px">
+      <button class="btn full" onclick="salvaPrezziOrdine()">💾 Salva prezzi</button>
+      <button class="btn ghost" onclick="stampaCassaOrdine()" style="flex-shrink:0">🖨</button>
+    </div>
+    <button class="btn full ghost" style="margin-top:0" onclick="closeSheets()">Chiudi</button>
   </div>
 
   <!-- Sheet dettaglio cliente B2C -->
@@ -1412,7 +1415,8 @@ function renderTopProd(arr){
 function renderProdList(){
   var box=el('prodList');
   if(!products.length){box.innerHTML='<div class="empty"><div class="big">🥐</div>Nessun prodotto.<br>Tocca + per aggiungerne uno.</div>';return}
-  var reps=reparti(),html='';
+  var allReps=[];products.forEach(function(p){if(allReps.indexOf(p.rep)<0)allReps.push(p.rep);});
+  var reps=allReps,html='';
   reps.forEach(function(rep){
     html+='<div class="reparto-title">'+esc(rep)+'</div>';
     products.filter(function(p){return p.rep===rep}).forEach(function(p){
@@ -2724,16 +2728,80 @@ function openCassaOrdine(id){
   var o=ordini.find(function(x){return x.id===id;});
   if(!o)return;
   cassaOrdineId=id;
-  cassaOrdineRighe=o.items.map(function(it){
-    var prod=products.find(function(p){return p.name===it.name||p.id===it.productId;});
-    var unit=prod?prod.unit:'pz';
-    var pesoMedio=prod?prod.pesoMedio||0:0;
-    var pesoDefault=unit==='kg'&&pesoMedio>0?(it.qty*pesoMedio/1000):0;
-    return {name:it.name,qty:it.qty,unit:unit,price:prod?prod.price:0,peso:pesoDefault,note:it.note||''};
-  });
+  // Usa prezzi già salvati sull'ordine se presenti, altrimenti dal catalogo
+  if(o.prezziCassa&&o.prezziCassa.length){
+    cassaOrdineRighe=o.prezziCassa.map(function(r){return Object.assign({},r);});
+  } else {
+    cassaOrdineRighe=o.items.map(function(it){
+      var prod=products.find(function(p){return p.name===it.name||p.id===it.productId;});
+      var unit=prod?prod.unit:'pz';
+      var pesoMedio=prod?prod.pesoMedio||0:0;
+      var pesoDefault=unit==='kg'&&pesoMedio>0?(it.qty*pesoMedio/1000):0;
+      return {name:it.name,qty:it.qty,unit:unit,price:prod?prod.price:0,peso:pesoDefault,note:it.note||''};
+    });
+  }
   el('cassaOrdineCliente').textContent=(o.cliente?o.cliente.nome:'')+(o.cliente&&o.cliente.tel?' · '+o.cliente.tel:'');
   renderCassaOrdineItems();
   openSheet('cassaOrdineSheet');
+}
+
+function salvaPrezziOrdine(){
+  var o=ordini.find(function(x){return x.id===cassaOrdineId;});
+  if(!o)return;
+  o.prezziCassa=cassaOrdineRighe.map(function(r){return Object.assign({},r);});
+  o.totaleCalcolato=+cassaOrdineRighe.reduce(function(s,r){
+    return s+(r.unit==='kg'?r.price*(r.peso||0):r.price*r.qty);
+  },0).toFixed(2);
+  o.synced=false;
+  saveOrdiniLocal();syncOrdini(true);
+  toast('Prezzi salvati ✓');
+  closeSheets();renderOrdini();
+}
+
+function stampaCassaOrdine(){
+  var o=ordini.find(function(x){return x.id===cassaOrdineId;});
+  if(!o)return;
+  // Salva prezzi prima di stampare
+  o.prezziCassa=cassaOrdineRighe.map(function(r){return Object.assign({},r);});
+  o.totaleCalcolato=+cassaOrdineRighe.reduce(function(s,r){
+    return s+(r.unit==='kg'?r.price*(r.peso||0):r.price*r.qty);
+  },0).toFixed(2);
+  o.synced=false;saveOrdiniLocal();
+  var bytes=buildEscPosBytesConPrezzi(o);
+  if(navigator.bluetooth){
+    stampaViBle(bytes).then(function(ok){if(!ok)stampaViaPdfConPrezzi(o);}).catch(function(){stampaViaPdfConPrezzi(o);});
+  } else {
+    stampaViaPdfConPrezzi(o);
+  }
+}
+
+function registraSaleFromOrdine(o){
+  var righe=o.prezziCassa&&o.prezziCassa.length?o.prezziCassa:o.items.map(function(it){
+    var prod=products.find(function(p){return p.name===it.name||p.id===it.productId;});
+    return {name:it.name,qty:it.qty,unit:prod?prod.unit:'pz',price:prod?prod.price:0,peso:0,note:it.note||''};
+  });
+  var sale={
+    id:uid(),ts:new Date().toISOString(),synced:false,
+    items:righe.map(function(r){
+      var prod=products.find(function(p){return p.name===r.name;});
+      var isKg=r.unit==='kg';
+      var qty=isKg?(r.peso||0):r.qty;
+      return {productId:prod?prod.id:'',name:r.name,rep:prod?prod.rep:'',unit:r.unit||'pz',price:r.price,qty:qty,total:+(r.price*qty).toFixed(2)};
+    }),
+    total:+righe.reduce(function(s,r){return s+(r.unit==='kg'?r.price*(r.peso||0):r.price*r.qty);},0).toFixed(2),
+    fromOrdineId:o.id,
+    clienteNome:o.cliente?o.cliente.nome:'',
+    clienteTel:o.cliente?o.cliente.tel:''
+  };
+  sales.push(sale);
+  o.saleId=sale.id;
+  o.stato='consegnato';
+  o.synced=false;
+  save();saveOrdiniLocal();
+  syncPending(true,true);
+  syncOrdini(true);
+  toast('Vendita registrata · '+money(sale.total));
+  renderOrdini();
 }
 
 function renderCassaOrdineItems(){
@@ -2771,6 +2839,60 @@ function aggCassaTotale(){
     return s+(r.unit==='kg'?r.price*(r.peso||0):r.price*r.qty);
   },0);
   el('cassaOrdineTotale').textContent=euro(tot);
+}
+
+function buildEscPosBytesConPrezzi(o){
+  var ESC=0x1B,GS=0x1D;
+  var enc=new TextEncoder();
+  var parts=[];
+  function b(){for(var i=0;i<arguments.length;i++)parts.push(new Uint8Array([arguments[i]]))}
+  function t(s){parts.push(enc.encode(s))}
+  function nl(n){for(var i=0;i<(n||1);i++)parts.push(new Uint8Array([0x0A]))}
+  function size(h,w){b(GS,0x21,(((h-1)&0xF)<<4)|((w-1)&0xF))}
+  function rpad(s,n){s=String(s);while(s.length<n)s=s+' ';return s.slice(0,n)}
+  function lpad(s,n){s=String(s);while(s.length<n)s=' '+s;return s.slice(-n)}
+  var d=new Date(o.dataConsegna+'T00:00:00');
+  var dateFmt=d.toLocaleDateString('it-IT',{weekday:'short',day:'numeric',month:'short'});
+  b(ESC,0x40);b(ESC,0x61,0x01); // center
+  size(2,1);b(ESC,0x45,0x01);t('BRUTTI MA BUONI');b(ESC,0x45,0x00);size(1,1);nl();
+  b(ESC,0x61,0x00); // left
+  t('--------------------------------');nl();
+  t('Cliente: ');b(ESC,0x45,0x01);t(o.cliente.nome);b(ESC,0x45,0x00);nl();
+  if(o.cliente.tel){t('Tel: '+o.cliente.tel);nl();}
+  t('Ritiro: '+dateFmt+(o.oraRitiro?' ore '+o.oraRitiro:''));nl();
+  t('--------------------------------');nl();
+  var righe=o.prezziCassa&&o.prezziCassa.length?o.prezziCassa:[];
+  righe.forEach(function(r){
+    var isKg=r.unit==='kg';
+    var qty=isKg?(r.peso||0):r.qty;
+    var tot=r.price*qty;
+    var desc=r.qty+'x '+r.name+(isKg?' ('+qty.toFixed(3)+'kg)':'');
+    var totStr=money(tot);
+    var pad=32-desc.length-totStr.length;
+    if(pad<1)pad=1;
+    t(desc+Array(pad+1).join(' ')+totStr);nl();
+  });
+  t('--------------------------------');nl();
+  var tot=righe.reduce(function(s,r){return s+(r.unit==='kg'?r.price*(r.peso||0):r.price*r.qty);},0);
+  b(ESC,0x45,0x01);t(rpad('TOTALE',24)+lpad(money(tot),8));b(ESC,0x45,0x00);nl();
+  t('--------------------------------');nl(4);
+  b(GS,0x56,0x41,0x10);
+  var total=parts.reduce(function(s,a){return s+a.length},0);
+  var out=new Uint8Array(total);var off=0;
+  parts.forEach(function(a){out.set(a,off);off+=a.length;});
+  return out;
+}
+
+function stampaViaPdfConPrezzi(o){
+  var righe=o.prezziCassa&&o.prezziCassa.length?o.prezziCassa:[];
+  var tot=righe.reduce(function(s,r){return s+(r.unit==='kg'?r.price*(r.peso||0):r.price*r.qty);},0);
+  var w=window.open('','_blank');
+  var rows=righe.map(function(r){
+    var isKg=r.unit==='kg';var qty=isKg?(r.peso||0):r.qty;
+    return '<tr><td>'+(r.qty+'x '+r.name+(isKg?' ('+qty.toFixed(3)+'kg)':''))+'</td><td style="text-align:right">'+money(r.price*qty)+'</td></tr>';
+  }).join('');
+  w.document.write('<html><body style="font-family:monospace;max-width:320px;margin:auto"><h2 style="text-align:center">Brutti ma Buoni</h2><p>Cliente: <b>'+o.cliente.nome+'</b></p><table width="100%">'+rows+'</table><hr><p style="text-align:right;font-size:18px"><b>TOTALE: '+money(tot)+'</b></p></body></html>');
+  w.print();
 }
 
 function confermaCassaOrdine(){
@@ -2870,8 +2992,13 @@ function ordCardHtml(o){
     +['aperto','pronto','consegnato'].map(function(s){return '<option value="'+s+'"'+(s===o.stato?' selected':'')+'>'+s+(s===o.stato?' ✓':'')+'</option>';}).join('')
     +'</select>'
     +'<div style="display:flex;gap:6px">'
-    +(o.saleId?'<span style="font-size:11px;color:var(--kg);font-weight:700;padding:4px 8px;background:var(--kg-soft);border-radius:8px">✓ Incassato</span>'
-      :'<button class="btn sm" style="background:var(--kg);font-size:12px" onclick="openCassaOrdine(\''+o.id+'\')">💰 Cassa</button>')
+    +(o.saleId
+      ?'<span style="font-size:11px;color:var(--kg);font-weight:700;padding:4px 8px;background:var(--kg-soft);border-radius:8px">✓ '+money(o.totaleCalcolato||0)+'</span>'
+      :o.totaleCalcolato
+        ?'<button class="btn sm ghost" style="font-size:12px" onclick="openCassaOrdine(\''+o.id+'\')">💰 '+money(o.totaleCalcolato)+'</button>'
+        :o.stato==='pronto'
+          ?'<button class="btn sm" style="background:var(--kg);font-size:12px" onclick="openCassaOrdine(\''+o.id+'\')">💰 Inserisci prezzi</button>'
+          :'')
     +'<button class="btn sm ghost" onclick="stampaOrdine(\''+o.id+'\')">🖨</button>'
     +'<button class="btn sm ghost" onclick="editOrdine(\''+o.id+'\')">Modifica</button>'
     +'</div></div></div>';
@@ -3129,6 +3256,15 @@ function stampaOrdine(id){
 
 function setStato(id,stato){
   var o=ordini.find(function(x){return x.id===id});if(!o)return;
+  if(stato==='pronto'){
+    o.stato='pronto';o.synced=false;saveOrdiniLocal();syncOrdini(true);renderOrdini();
+    openCassaOrdine(id); // apre scheda prezzi
+    return;
+  }
+  if(stato==='consegnato'&&!o.saleId){
+    registraSaleFromOrdine(o); // registra vendita e marca consegnato
+    return;
+  }
   o.stato=stato;o.synced=false;saveOrdiniLocal();syncOrdini(true);renderOrdini();
 }
 
