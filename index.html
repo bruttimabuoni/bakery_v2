@@ -510,10 +510,11 @@
       <span id="cassaOrdineTotale" style="font-family:var(--mono);font-size:20px;font-weight:800;color:var(--accent)"></span>
     </div>
     <div style="display:flex;gap:9px;margin-bottom:9px">
-      <button class="btn full" onclick="salvaPrezziOrdine()">💾 Salva prezzi</button>
+      <button class="btn full" onclick="salvaPrezziSegnaPronte()">✓ Salva e segna pronto</button>
       <button class="btn ghost" onclick="stampaCassaOrdine()" style="flex-shrink:0">🖨</button>
     </div>
-    <button class="btn full ghost" style="margin-top:0" onclick="closeSheets()">Chiudi</button>
+    <button class="btn full ghost" onclick="salvaPrezziOrdine()">💾 Salva prezzi senza segnare pronto</button>
+    <button class="btn full ghost" style="margin-top:9px" onclick="closeSheets()">Chiudi</button>
   </div>
 
   <!-- Sheet dettaglio cliente B2C -->
@@ -971,6 +972,11 @@ function renderProducts(){
     return '<button class="pcard'+(p.price<=0?' pcard-noprice':'')+'" onclick="tapProd(\''+p.id+'\')">'
       +'<span class="ubadge '+p.unit+'">'+(p.unit==='kg'?'KG':'PZ')+'</span>'
       +'<span class="pname">'+esc(p.name)+'</span><span class="pmeta">'+badge+'</span></button>';
+  }
+
+  if(isChiuso()&&todayFilter&&!searchQ){
+    area.innerHTML='<div class="empty"><div class="big">🔒</div>Oggi siamo chiusi.<br><button class="btn sm ghost" style="margin-top:12px" onclick="toggleDayFilter()">Mostra tutti i prodotti</button></div>';
+    return;
   }
 
   var pool = todayFilter&&!searchQ ? products.filter(isAvailableToday) : products;
@@ -2745,16 +2751,27 @@ function openCassaOrdine(id){
   openSheet('cassaOrdineSheet');
 }
 
-function salvaPrezziOrdine(){
+function _salvaPrezziSuOrdine(){
   var o=ordini.find(function(x){return x.id===cassaOrdineId;});
-  if(!o)return;
+  if(!o)return null;
   o.prezziCassa=cassaOrdineRighe.map(function(r){return Object.assign({},r);});
   o.totaleCalcolato=+cassaOrdineRighe.reduce(function(s,r){
     return s+(r.unit==='kg'?r.price*(r.peso||0):r.price*r.qty);
   },0).toFixed(2);
   o.synced=false;
+  return o;
+}
+function salvaPrezziOrdine(){
+  var o=_salvaPrezziSuOrdine();if(!o)return;
   saveOrdiniLocal();syncOrdini(true);
   toast('Prezzi salvati ✓');
+  closeSheets();renderOrdini();
+}
+function salvaPrezziSegnaPronte(){
+  var o=_salvaPrezziSuOrdine();if(!o)return;
+  o.stato='pronto';
+  saveOrdiniLocal();syncOrdini(true);
+  toast('Ordine pronto ✓');
   closeSheets();renderOrdini();
 }
 
@@ -2994,10 +3011,10 @@ function ordCardHtml(o){
     +'<div style="display:flex;gap:6px">'
     +(o.saleId
       ?'<span style="font-size:11px;color:var(--kg);font-weight:700;padding:4px 8px;background:var(--kg-soft);border-radius:8px">✓ '+money(o.totaleCalcolato||0)+'</span>'
-      :o.totaleCalcolato
-        ?'<button class="btn sm ghost" style="font-size:12px" onclick="openCassaOrdine(\''+o.id+'\')">💰 '+money(o.totaleCalcolato)+'</button>'
-        :o.stato==='pronto'
-          ?'<button class="btn sm" style="background:var(--kg);font-size:12px" onclick="openCassaOrdine(\''+o.id+'\')">💰 Inserisci prezzi</button>'
+      :o.stato==='aperto'
+        ?'<button class="btn sm" style="background:var(--kg);font-size:12px" onclick="openCassaOrdine(\''+o.id+'\')">💰 Cassa</button>'
+        :o.stato==='pronto'&&o.totaleCalcolato
+          ?'<button class="btn sm ghost" style="font-size:12px" onclick="openCassaOrdine(\''+o.id+'\')">💰 '+money(o.totaleCalcolato)+'</button>'
           :'')
     +'<button class="btn sm ghost" onclick="stampaOrdine(\''+o.id+'\')">🖨</button>'
     +'<button class="btn sm ghost" onclick="editOrdine(\''+o.id+'\')">Modifica</button>'
@@ -3256,13 +3273,8 @@ function stampaOrdine(id){
 
 function setStato(id,stato){
   var o=ordini.find(function(x){return x.id===id});if(!o)return;
-  if(stato==='pronto'){
-    o.stato='pronto';o.synced=false;saveOrdiniLocal();syncOrdini(true);renderOrdini();
-    openCassaOrdine(id); // apre scheda prezzi
-    return;
-  }
   if(stato==='consegnato'&&!o.saleId){
-    registraSaleFromOrdine(o); // registra vendita e marca consegnato
+    registraSaleFromOrdine(o);
     return;
   }
   o.stato=stato;o.synced=false;saveOrdiniLocal();syncOrdini(true);renderOrdini();
