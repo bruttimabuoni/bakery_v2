@@ -2380,8 +2380,12 @@ function fetchBancoFromSheet(silent){
       // Unisci: mantieni locali non ancora sul foglio
       var remoteIds={};j.records.forEach(function(r){remoteIds[r.id]=true});
       var localOnly=bancoRecords.filter(function(r){return !remoteIds[r.id]});
-      bancoRecords=j.records.concat(localOnly);
-      bancoRecords.forEach(function(r){r.synced=true});
+      // Preserva modifiche locali pendenti su record già esistenti sul foglio
+      var localPending={};bancoRecords.filter(function(r){return !r.synced&&remoteIds[r.id]}).forEach(function(r){localPending[r.id]=r});
+      bancoRecords=j.records.map(function(r){
+        if(localPending[r.id])return localPending[r.id];
+        r.synced=true;return r;
+      }).concat(localOnly); // localOnly mantiene synced=false
       saveBancoLocal();
       if(!silent)toast('Banco aggiornato ✓');
     }).catch(function(){if(!silent)toast('Impossibile caricare banco dal foglio');});
@@ -3425,8 +3429,12 @@ function fetchOrdiniFromSheet(silent){
       if(!j||!j.ok||!Array.isArray(j.ordini))throw 0;
       var remoteIds={};j.ordini.forEach(function(o){remoteIds[o.id]=true});
       var localOnly=ordini.filter(function(o){return !remoteIds[o.id]});
-      ordini=j.ordini.concat(localOnly);
-      ordini.forEach(function(o){o.synced=true;o.dataConsegna=normalizeDate(o.dataConsegna);});
+      // Preserva modifiche locali pendenti su ordini già esistenti sul foglio
+      var localPending={};ordini.filter(function(o){return !o.synced&&remoteIds[o.id]}).forEach(function(o){localPending[o.id]=o});
+      ordini=j.ordini.map(function(o){
+        if(localPending[o.id])return localPending[o.id];
+        o.synced=true;o.dataConsegna=normalizeDate(o.dataConsegna);return o;
+      }).concat(localOnly); // localOnly mantiene synced=false
       saveOrdiniLocal();
       if(!silent)toast('Ordini aggiornati ✓');
     }).catch(function(){if(!silent)toast('Impossibile caricare ordini dal foglio');});
@@ -3441,8 +3449,15 @@ function acquireWakeLock(){
     wl.addEventListener('release',function(){_wakeLock=null});
   }).catch(function(){});
 }
+var _lastSyncTime=0;
 document.addEventListener('visibilitychange',function(){
-  if(document.visibilityState==='visible')acquireWakeLock();
+  if(document.visibilityState==='visible'){
+    acquireWakeLock();
+    // Sincronizza sempre quando si torna in foreground (se è passato almeno 1 min dall'ultima sync)
+    if(cfg.sheetUrl&&Date.now()-_lastSyncTime>60000){
+      syncAll(false);
+    }
+  }
 });
 acquireWakeLock();
 
@@ -3470,8 +3485,8 @@ function fetchSalesFromSheet(silent){
           if(!isNaN(d.getTime()))s.ts=d.toISOString();
         }
       });
-      sales=j.sales.concat(localOnly);
-      sales.forEach(function(s){s.synced=true});
+      // Preserva vendite locali pendenti non ancora sul foglio (localOnly mantiene synced=false)
+      sales=j.sales.map(function(s){s.synced=true;return s;}).concat(localOnly);
       save();renderAll();
       if(!silent)toast('Vendite aggiornate dal foglio ✓ ('+j.sales.length+')');
       updateSyncUI();
@@ -3526,7 +3541,13 @@ function riscriviTutteLeVendite(){
 
 function syncAll(showToast){
   if(!cfg.sheetUrl)return;
+  _lastSyncTime=Date.now();
   if(showToast)toast('Aggiornamento in corso…');
+  // Invia pendenti (force=true bypassa il guard cfg.auto)
+  syncPending(true,true);
+  syncBanco(true);
+  syncOrdini(true);
+  // Poi legge tutto da Sheet
   fetchProductsFromSheet();
   fetchSalesFromSheet(true);
   fetchBancoFromSheet(true);
@@ -3534,13 +3555,10 @@ function syncAll(showToast){
   fetchClientiB2bFromSheet(true);
   fetchClientiB2cFromSheet(true);
   fetchOperatoriFromSheet(true);
-  if(cfg.auto)syncPending(true);
-  syncBanco(true);
-  syncOrdini(true);
   if(showToast)setTimeout(function(){toast('Dati aggiornati ✓')},2500);
 }
 if(cfg.sheetUrl) syncAll(true);
-setInterval(function(){syncAll(false)},5*60*1000);
+setInterval(function(){syncAll(false)},3*60*1000); // ogni 3 minuti invece di 5
 window.addEventListener('online',function(){
   toast('Connessione ripristinata…');
   setTimeout(function(){syncAll(true)},1000);
