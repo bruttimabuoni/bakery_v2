@@ -1887,7 +1887,8 @@ var APPS_SCRIPT_CODE=
 "  var map = {};\n"+
 "  rows.forEach(function(r) {\n"+
 "    var id = String(r[0]); if (!id) return;\n"+
-"    if (!map[id]) map[id] = {id:id, date:String(r[1]), tipo:String(r[2]), ts:new Date().toISOString(), synced:true, items:[]};\n"+
+"    var dv=r[1]; var ds=(dv instanceof Date&&!isNaN(dv))?Utilities.formatDate(dv,Session.getScriptTimeZone(),'yyyy-MM-dd'):String(dv).slice(0,10);\n"+
+"    if (!map[id]) map[id] = {id:id, date:ds, tipo:String(r[2]), ts:new Date().toISOString(), synced:true, items:[]};\n"+
 "    map[id].items.push({name:String(r[3]), productId:String(r[4]), pezzi:parseFloat(r[5])||0, pesoMedio:parseFloat(r[6])||0});\n"+
 "  });\n"+
 "  return {ok:true, records:Object.keys(map).map(function(k){return map[k];})};\n"+
@@ -2316,14 +2317,25 @@ var _diarioSelected=null; // dateStr selezionata
 
 function parseBancoDate(s){var p=s.split('-');return new Date(parseInt(p[0]),parseInt(p[1])-1,parseInt(p[2]));}
 
+function normalizeBancoDate(s){
+  // Se già YYYY-MM-DD restituisce com'è; altrimenti prova a parsare e riformattare
+  if(!s)return'';
+  if(/^\d{4}-\d{2}-\d{2}$/.test(s))return s;
+  var d=new Date(s);
+  if(isNaN(d.getTime()))return s;
+  return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+}
+
 function buildBancoByDate(){
   var byDate={};
   bancoRecords.forEach(function(r){
-    if(!byDate[r.date])byDate[r.date]={items:{}};
+    var dateKey=normalizeBancoDate(r.date);
+    if(!dateKey)return;
+    if(!byDate[dateKey])byDate[dateKey]={items:{}};
     (r.items||[]).forEach(function(it){
-      if(!byDate[r.date].items[it.name])byDate[r.date].items[it.name]={name:it.name,carico:null,rim:null};
-      if(r.tipo==='carico')byDate[r.date].items[it.name].carico=it.pezzi;
-      else if(r.tipo==='rimanenze')byDate[r.date].items[it.name].rim=it.pezzi;
+      if(!byDate[dateKey].items[it.name])byDate[dateKey].items[it.name]={name:it.name,carico:null,rim:null};
+      if(r.tipo==='carico')byDate[dateKey].items[it.name].carico=it.pezzi;
+      else if(r.tipo==='rimanenze')byDate[dateKey].items[it.name].rim=it.pezzi;
     });
   });
   return byDate;
