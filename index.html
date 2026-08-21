@@ -2311,44 +2311,113 @@ function setBancoMode(m){
   renderBanco();
 }
 
-function renderBancoDiario(){
-  // Costruisce mappa data → {carico:{prodId:pezzi}, rimanenze:{prodId:pezzi}}
+var _diarioMonth=null; // {y,m} mese visualizzato nel calendario
+var _diarioSelected=null; // dateStr selezionata
+
+function parseBancoDate(s){var p=s.split('-');return new Date(parseInt(p[0]),parseInt(p[1])-1,parseInt(p[2]));}
+
+function buildBancoByDate(){
   var byDate={};
   bancoRecords.forEach(function(r){
-    if(!byDate[r.date])byDate[r.date]={date:r.date,items:{}};
+    if(!byDate[r.date])byDate[r.date]={items:{}};
     (r.items||[]).forEach(function(it){
       if(!byDate[r.date].items[it.name])byDate[r.date].items[it.name]={name:it.name,carico:null,rim:null};
       if(r.tipo==='carico')byDate[r.date].items[it.name].carico=it.pezzi;
       else if(r.tipo==='rimanenze')byDate[r.date].items[it.name].rim=it.pezzi;
     });
   });
-  var dates=Object.keys(byDate).sort(function(a,b){return b.localeCompare(a)}); // più recente prima
+  return byDate;
+}
+
+function renderBancoDiario(){
+  var byDate=buildBancoByDate();
+  var dates=Object.keys(byDate);
   if(!dates.length){
     el('bancoDiarioArea').innerHTML='<div class="empty"><div class="big">📖</div>Nessun dato banco ancora.</div>';
     return;
   }
-  var html='';
-  dates.forEach(function(dateStr){
-    var d=new Date(dateStr+'T00:00:00');
-    var dlbl=d.toLocaleDateString('it-IT',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
-    var entry=byDate[dateStr];
-    var names=Object.keys(entry.items).sort(function(a,b){return a.localeCompare(b,'it')});
-    var hasRim=names.some(function(n){return entry.items[n].rim!==null});
-    html+='<div class="panel" style="margin-bottom:12px">'
-      +'<div style="font-weight:700;font-size:14px;margin-bottom:8px;color:var(--ink)">'+esc(dlbl)+'</div>'
-      +'<div style="display:grid;grid-template-columns:1fr auto auto;gap:4px 10px;font-size:13px;align-items:center">'
+  var now=new Date();
+  if(!_diarioMonth)_diarioMonth={y:now.getFullYear(),m:now.getMonth()};
+  _renderDiarioCalendar(byDate);
+}
+
+function _diarioNavMonth(delta){
+  var m=_diarioMonth.m+delta,y=_diarioMonth.y;
+  if(m>11){m=0;y++;}else if(m<0){m=11;y--;}
+  _diarioMonth={y:y,m:m};
+  _diarioSelected=null;
+  _renderDiarioCalendar(buildBancoByDate());
+}
+
+function _diarioSelectDay(dateStr){
+  _diarioSelected=(_diarioSelected===dateStr)?null:dateStr;
+  _renderDiarioCalendar(buildBancoByDate());
+}
+
+function _renderDiarioCalendar(byDate){
+  var y=_diarioMonth.y,m=_diarioMonth.m;
+  var MESI=['Gennaio','Febbraio','Marzo','Aprile','Maggio','Giugno','Luglio','Agosto','Settembre','Ottobre','Novembre','Dicembre'];
+  var DOW=['L','M','M','G','V','S','D'];
+  var firstDay=new Date(y,m,1);
+  var lastDay=new Date(y,m+1,0);
+  // giorno settimana 0=lun
+  var startDow=(firstDay.getDay()+6)%7;
+  var todayStr2=todayStr();
+
+  var html='<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">'
+    +'<button class="btn sm ghost" onclick="_diarioNavMonth(-1)">‹</button>'
+    +'<span style="font-weight:700;font-size:15px">'+MESI[m]+' '+y+'</span>'
+    +'<button class="btn sm ghost" onclick="_diarioNavMonth(1)">›</button>'
+    +'</div>';
+
+  // Griglia 7 colonne
+  html+='<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-bottom:12px">';
+  DOW.forEach(function(d){html+='<div style="text-align:center;font-size:11px;font-weight:700;color:var(--ink-faint);padding:4px 0">'+d+'</div>';});
+  // celle vuote iniziali
+  for(var i=0;i<startDow;i++)html+='<div></div>';
+  for(var day=1;day<=lastDay.getDate();day++){
+    var ds=y+'-'+String(m+1).padStart(2,'0')+'-'+String(day).padStart(2,'0');
+    var hasData=!!byDate[ds];
+    var hasRim=hasData&&Object.values(byDate[ds].items).some(function(it){return it.rim!==null;});
+    var isToday=ds===todayStr2;
+    var isSel=ds===_diarioSelected;
+    var bg=isSel?'var(--accent)':isToday?'var(--surface-3,var(--surface-2))':'var(--surface-2)';
+    var col=isSel?'#fff':hasData?'var(--ink)':'var(--ink-faint)';
+    var dot=hasRim?'<div style="width:5px;height:5px;border-radius:50%;background:'+(isSel?'#fff':'var(--accent)')+';margin:2px auto 0"></div>':'';
+    var cursor=hasData?'cursor:pointer':'';
+    html+='<div style="text-align:center;border-radius:10px;padding:6px 2px;background:'+bg+';color:'+col+';font-size:13px;font-weight:'+(hasData?'700':'400')+';'+cursor+'"'
+      +(hasData?' onclick="_diarioSelectDay(\''+ds+'\')"':'')+'>'+day+dot+'</div>';
+  }
+  html+='</div>';
+
+  // Legenda
+  html+='<div style="display:flex;gap:12px;font-size:11px;color:var(--ink-faint);margin-bottom:12px">'
+    +'<span><span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--accent);margin-right:3px"></span>Rimanenze registrate</span>'
+    +'<span style="font-weight:700;color:var(--ink)">Grassetto</span> = dati carico/sera</div>';
+
+  // Dettaglio giorno selezionato
+  if(_diarioSelected&&byDate[_diarioSelected]){
+    var d2=parseBancoDate(_diarioSelected);
+    var dlbl=d2.toLocaleDateString('it-IT',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
+    var entry=byDate[_diarioSelected];
+    var names=Object.keys(entry.items).sort(function(a,b){return a.localeCompare(b,'it');});
+    var hasRim2=names.some(function(n){return entry.items[n].rim!==null;});
+    html+='<div class="panel" style="margin-bottom:0">'
+      +'<div style="font-weight:700;font-size:14px;margin-bottom:10px;color:var(--ink);text-transform:capitalize">'+esc(dlbl)+'</div>'
+      +'<div style="display:grid;grid-template-columns:1fr auto'+(hasRim2?' auto':'')+';gap:5px 10px;font-size:13px;align-items:center">'
       +'<div style="font-weight:600;color:var(--ink-soft);font-size:11px;letter-spacing:.04em">PRODOTTO</div>'
       +'<div style="font-weight:600;color:var(--ink-soft);font-size:11px;text-align:center">☀️</div>'
-      +(hasRim?'<div style="font-weight:600;color:var(--ink-soft);font-size:11px;text-align:center">🌙</div>':'<div></div>');
+      +(hasRim2?'<div style="font-weight:600;color:var(--ink-soft);font-size:11px;text-align:center">🌙</div>':'');
     names.forEach(function(n){
       var it=entry.items[n];
-      var rimColor=it.rim===0?'color:#e74c3c;font-weight:700':it.rim>0?'color:var(--ink-faint)':'color:var(--ink-faint)';
+      var rimSt=it.rim===0?'color:#e74c3c;font-weight:700':'';
       html+='<div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(n)+'</div>'
         +'<div style="text-align:center;font-family:var(--mono)">'+(it.carico!==null?it.carico:'–')+'</div>'
-        +(hasRim?'<div style="text-align:center;font-family:var(--mono);'+rimColor+'">'+(it.rim!==null?it.rim:'–')+'</div>':'<div></div>');
+        +(hasRim2?'<div style="text-align:center;font-family:var(--mono);'+rimSt+'">'+(it.rim!==null?it.rim:'–')+'</div>':'');
     });
     html+='</div></div>';
-  });
+  }
+
   el('bancoDiarioArea').innerHTML=html;
 }
 
