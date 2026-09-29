@@ -551,16 +551,83 @@
       <div class="panel"><h3>Ultimi scontrini <span id="receiptsCount"></span></h3><div id="recentReceipts"></div></div>
       <div class="panel" id="prodGiornoPanel" style="display:none">
         <h3>🧑‍🍳 Produzione di domani — <span id="prodGiornoTitle" style="font-weight:400;color:var(--ink-soft)"></span></h3>
-        <p class="help" style="margin-bottom:10px">Quantità suggerite basate sullo storico banco. Se la media avanzo è alta → riduci. Se vendi tutto e l'avanzo è quasi zero → rischi di finire, aumenta.</p>
+        <details style="margin-bottom:14px">
+          <summary style="cursor:pointer;font-size:12.5px;font-weight:700;color:var(--accent-press)">Come leggere i suggerimenti ▾</summary>
+          <div style="margin-top:10px;display:flex;flex-direction:column;gap:10px">
+            <div class="legend-block">
+              <div class="lb-icon" style="background:#e8f8ee;color:var(--pos)">📈</div>
+              <div>
+                <div class="lb-title">Come vengono calcolati</div>
+                <div class="lb-text">Per ogni prodotto l'app calcola la media storica di carico (↑) e avanzo (←) nei giorni precedenti dello stesso giorno della settimana. La quantità suggerita è <b>media carico − media avanzo</b>, arrotondata. Migliora con l'aumentare dei dati.</div>
+              </div>
+            </div>
+            <div class="legend-block">
+              <div class="lb-icon" style="background:#fff4e6;color:#e67700">⬇️</div>
+              <div>
+                <div class="lb-title">Avanzo alto → riduci la produzione</div>
+                <div class="lb-text">Se un prodotto avanza spesso, significa che stai producendo più di quanto il mercato assorbe quel giorno. Riduci il carico fino a quando l'avanzo si azzera o diventa trascurabile.</div>
+              </div>
+            </div>
+            <div class="legend-block">
+              <div class="lb-icon" style="background:#f0fff4;color:var(--pos)">⬆️</div>
+              <div>
+                <div class="lb-title">Avanzo zero → valuta di aumentare</div>
+                <div class="lb-text">Se vendi sempre tutto prima della chiusura senza avanzi, potresti perdere vendite. Aumenta gradualmente il carico finché non si forma un piccolo avanzo residuo.</div>
+              </div>
+            </div>
+          </div>
+        </details>
         <div id="prodGiornoList"></div>
-        <p style="font-size:11px;color:var(--ink-faint);margin-top:10px;line-height:1.4">Basato sullo storico banco, con correttivo per giorno della settimana. Migliora con l'aumentare dei dati.</p>
       </div>
       <div class="panel" id="bancoAnalysisPanel" style="display:none">
         <h3>Analisi banco <span id="bancoAnalysisPeriod"></span></h3>
-        <p class="help" style="margin-bottom:10px">
-          <b>↑</b> caricato &nbsp;·&nbsp; <b style="color:var(--pos)">✓</b> venduto &nbsp;·&nbsp; <b style="color:var(--accent)">←</b> avanzo &nbsp;·&nbsp;
-          <b style="color:var(--pos)">verde &gt;80%</b> ben calibrato &nbsp;·&nbsp; <b style="color:var(--accent)">arancio 50–80%</b> avanzo contenuto &nbsp;·&nbsp; <b style="color:var(--neg)">rosso &lt;50%</b> sovraproduzione
-        </p>
+        <details style="margin-bottom:14px">
+          <summary style="cursor:pointer;font-size:12.5px;font-weight:700;color:var(--accent-press)">Come leggere l'analisi ▾</summary>
+          <div style="margin-top:10px;display:flex;flex-direction:column;gap:10px">
+            <div class="legend-block">
+              <div class="lb-icon" style="background:var(--kg-soft);color:var(--kg)">↑</div>
+              <div>
+                <div class="lb-title">↑ Caricato</div>
+                <div class="lb-text">Quantità media portata in banco ogni mattina nei giorni del periodo selezionato.</div>
+              </div>
+            </div>
+            <div class="legend-block">
+              <div class="lb-icon" style="background:#e8f8ee;color:var(--pos)">✓</div>
+              <div>
+                <div class="lb-title">✓ Venduto</div>
+                <div class="lb-text">Quantità media venduta alla cassa, calcolata automaticamente dagli scontrini registrati.</div>
+              </div>
+            </div>
+            <div class="legend-block">
+              <div class="lb-icon" style="background:var(--accent-soft);color:var(--accent-press)">←</div>
+              <div>
+                <div class="lb-title">← Avanzo</div>
+                <div class="lb-text">Quantità media rimasta sul banco a fine giornata. È il dato chiave per valutare la produzione: un avanzo alto indica sovraproduzione sistematica.</div>
+              </div>
+            </div>
+            <div style="padding-top:10px;border-top:1px solid var(--line)">
+              <div class="lb-title" style="margin-bottom:8px">Barra % venduto</div>
+              <div style="display:flex;flex-direction:column;gap:7px">
+                <div style="display:flex;align-items:center;gap:10px">
+                  <div style="width:40px;height:8px;border-radius:99px;background:var(--pos);flex-shrink:0"></div>
+                  <span class="lb-text"><b style="color:var(--pos)">Verde &gt;80%</b> — produzione ben calibrata, pochissimi sprechi</span>
+                </div>
+                <div style="display:flex;align-items:center;gap:10px">
+                  <div style="width:40px;height:8px;border-radius:99px;background:var(--accent);flex-shrink:0"></div>
+                  <span class="lb-text"><b style="color:var(--accent)">Arancio 50–80%</b> — avanzo contenuto, valuta di ridurre leggermente</span>
+                </div>
+                <div style="display:flex;align-items:center;gap:10px">
+                  <div style="width:40px;height:8px;border-radius:99px;background:var(--neg);flex-shrink:0"></div>
+                  <span class="lb-text"><b style="color:var(--neg)">Rosso &lt;50%</b> — sovraproduzione: più della metà avanza ogni volta</span>
+                </div>
+              </div>
+            </div>
+            <div style="padding-top:10px;border-top:1px solid var(--line)">
+              <div class="lb-title" style="margin-bottom:6px">Colori per prodotto nelle schede giornaliere</div>
+              <div class="lb-text"><b style="color:var(--pos)">Verde</b> = tutto venduto, nessun avanzo &nbsp;·&nbsp; <b style="color:var(--accent)">Arancio</b> = avanzo &lt;40% del carico &nbsp;·&nbsp; <b style="color:var(--neg)">Rosso</b> = avanzo &gt;40% del carico</div>
+            </div>
+          </div>
+        </details>
         <div id="bancoAnalysis"></div>
       </div>
     </div>
