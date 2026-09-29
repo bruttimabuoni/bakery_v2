@@ -1791,8 +1791,11 @@ var APPS_SCRIPT_CODE=
 "// =====================================================\n"+
 "// Forno Vendite - Apps Script  (incolla intero)\n"+
 "// =====================================================\n"+
-"var SALES_SHEET   = 'Vendite';\n"+
-"var PRODUCTS_SHEET = 'Prodotti';\n"+
+"var SALES_SHEET         = 'Vendite';\n"+
+"var PRODUCTS_SHEET      = 'Prodotti';\n"+
+"var BANCO_SHEET         = 'Banco';\n"+
+"var BANCO_OGGI_SHEET    = 'Banco Oggi';\n"+
+"var BANCO_STORICO_SHEET = 'Banco Storico';\n"+
 "\n"+
 "function doGet(e) {\n"+
 "  var action = e && e.parameter && e.parameter.action;\n"+
@@ -1816,6 +1819,8 @@ var APPS_SCRIPT_CODE=
 "    if (action === 'sales')         { saveSales(payload.sales); return jsonResponse({ok:true}); }\n"+
 "    if (action === 'resyncSales')   { clearAndSaveSales(payload.sales); return jsonResponse({ok:true}); }\n"+
 "    if (action === 'banco')         { saveBanco(payload.records); return jsonResponse({ok:true}); }\n"+
+"    if (action === 'bancoOggi')    { saveBancoOggi(payload); return jsonResponse({ok:true}); }\n"+
+"    if (action === 'bancoStorico') { saveBancoStorico(payload.records); return jsonResponse({ok:true}); }\n"+
 "    if (action === 'ordini')        { saveOrdini(payload.ordini); return jsonResponse({ok:true}); }\n"+
 "    if (action === 'deleteOrdine')  { deleteOrdine(payload.id); return jsonResponse({ok:true}); }\n"+
 "    if (action === 'clientib2b')    { saveClientiB2B(payload.clienti); return jsonResponse({ok:true}); }\n"+
@@ -1986,6 +1991,65 @@ var APPS_SCRIPT_CODE=
 "    map[id].items.push({name:String(r[3]), productId:String(r[4]), pezzi:parseFloat(r[5])||0, pesoMedio:parseFloat(r[6])||0});\n"+
 "  });\n"+
 "  return {ok:true, records:Object.keys(map).map(function(k){return map[k];})};\n"+
+"}\n"+
+"\n"+
+"// ----- banco oggi (live, si sovrascrive) -----\n"+
+"var BANCO_OGGI_SHEET = 'Banco Oggi';\n"+
+"function saveBancoOggi(payload) {\n"+
+"  var ss = SpreadsheetApp.getActiveSpreadsheet();\n"+
+"  var sh = ss.getSheetByName(BANCO_OGGI_SHEET);\n"+
+"  if (!sh) sh = ss.insertSheet(BANCO_OGGI_SHEET);\n"+
+"  sh.clearContents();\n"+
+"  sh.getRange(1,1,1,6).setValues([['Data','Prodotto','Carico (pz)','Venduto (pz)','Rimanenze (pz)','Disp. attuale (pz)']]).setFontWeight('bold');\n"+
+"  var date = payload.date || '';\n"+
+"  var caricoMap = {};\n"+
+"  (payload.carico||[]).forEach(function(it){ caricoMap[it.name] = it.pezzi||0; });\n"+
+"  var rimMap = {};\n"+
+"  (payload.rimanenze||[]).forEach(function(it){ rimMap[it.name] = it.pezzi||0; });\n"+
+"  var vendutoMap = payload.venduto || {};\n"+
+"  var names = Object.keys(caricoMap);\n"+
+"  if (!names.length) return;\n"+
+"  var rows = names.map(function(n) {\n"+
+"    var car = caricoMap[n]||0;\n"+
+"    var vend = parseFloat(vendutoMap[n])||0;\n"+
+"    var rim = rimMap[n]!=null ? rimMap[n] : '';\n"+
+"    var disp = car - vend;\n"+
+"    return [date, n, car, Math.round(vend*10)/10, rim, Math.round(disp*10)/10];\n"+
+"  });\n"+
+"  sh.getRange(2,1,rows.length,6).setValues(rows);\n"+
+"}\n"+
+"\n"+
+"// ----- banco storico (definitivo, si accumula) -----\n"+
+"var BANCO_STORICO_SHEET = 'Banco Storico';\n"+
+"function saveBancoStorico(records) {\n"+
+"  if (!records || !records.length) return;\n"+
+"  var ss = SpreadsheetApp.getActiveSpreadsheet();\n"+
+"  var sh = ss.getSheetByName(BANCO_STORICO_SHEET);\n"+
+"  if (!sh) {\n"+
+"    sh = ss.insertSheet(BANCO_STORICO_SHEET);\n"+
+"    sh.getRange(1,1,1,6).setValues([['Data','Prodotto','Carico (pz)','Venduto (pz)','Rimanenze (pz)','% venduto']]).setFontWeight('bold');\n"+
+"  }\n"+
+"  // Raccoglie date già archiviate per evitare duplicati\n"+
+"  var existingDates = {};\n"+
+"  if (sh.getLastRow() > 1) {\n"+
+"    sh.getRange(2,1,sh.getLastRow()-1,1).getValues().forEach(function(r){ existingDates[String(r[0]).slice(0,10)] = true; });\n"+
+"  }\n"+
+"  var newRows = [];\n"+
+"  records.forEach(function(rec) {\n"+
+"    var date = rec.date;\n"+
+"    if (existingDates[date]) return; // già archiviato\n"+
+"    var carico = rec.carico || {};\n"+
+"    var rimanenze = rec.rimanenze || {};\n"+
+"    var venduto = rec.venduto || {};\n"+
+"    Object.keys(carico).forEach(function(n) {\n"+
+"      var car = carico[n]||0;\n"+
+"      var vend = venduto[n]||0;\n"+
+"      var rim = rimanenze[n]!=null ? rimanenze[n] : '';\n"+
+"      var pct = car>0 ? Math.round(vend/car*100) : '';\n"+
+"      newRows.push([date, n, car, Math.round(vend*10)/10, rim, pct]);\n"+
+"    });\n"+
+"  });\n"+
+"  if (newRows.length) sh.getRange(sh.getLastRow()+1,1,newRows.length,6).setValues(newRows);\n"+
 "}\n"+
 "\n"+
 "// ----- ordini -----\n"+
@@ -2385,11 +2449,71 @@ function renderAll(){renderDayToggle();renderRepChips();renderProducts();renderP
 
 /* ============================== BANCO ============================== */
 var BKEY='forno_banco_v1';
-var bancoRecords = load(BKEY, []); // [{id,date,tipo:'carico'|'rimanenze',items:[{productId,name,pezzi,pesoMedio}]}]
-var bancoMode = 'carico'; // 'carico' | 'rimanenze'
-var bancoDraft = {}; // productId -> pezzi (input corrente)
+var BKEY_STORICO='forno_banco_storico_v1';
+var bancoRecords = load(BKEY, []); // [{id,date,tipo:'carico'|'rimanenze',items:[...]}]
+var bancoStorico = load(BKEY_STORICO, []); // [{date, carico:{name:pz}, rimanenze:{name:pz}, venduto:{name:pz}, closedAt}]
+var bancoMode = 'carico';
+var bancoDraft = {};
 
 function saveBancoLocal(){lsSet(BKEY,JSON.stringify(bancoRecords));}
+function saveBancoStorico(){lsSet(BKEY_STORICO,JSON.stringify(bancoStorico));}
+
+// Chiude i giorni passati: calcola venduto, archivia nello storico, rimuove dal working set
+function closePastDays(){
+  var today=todayStr();
+  // Trova date passate con record non ancora archiviati
+  var pastDates={};
+  bancoRecords.forEach(function(r){if(r.date<today)pastDates[r.date]=true;});
+  Object.keys(pastDates).forEach(function(date){
+    // Salta se già archiviato
+    if(bancoStorico.find(function(s){return s.date===date;}))return;
+    var caricoRec=bancoRecords.find(function(r){return r.date===date&&r.tipo==='carico';});
+    var rimRec=bancoRecords.find(function(r){return r.date===date&&r.tipo==='rimanenze';});
+    var carico={}, rimanenze={};
+    if(caricoRec)(caricoRec.items||[]).forEach(function(it){carico[it.name]=it.pezzi;});
+    if(rimRec)(rimRec.items||[]).forEach(function(it){rimanenze[it.name]=it.pezzi;});
+    // Venduto = carico - rimanenze (per prodotti con entrambi i valori)
+    var venduto={};
+    Object.keys(carico).forEach(function(n){
+      if(rimanenze[n]!=null)venduto[n]=Math.max(0,carico[n]-rimanenze[n]);
+      else venduto[n]=carico[n]; // se non inserite rimanenze, consideriamo tutto venduto
+    });
+    bancoStorico.push({date:date,carico:carico,rimanenze:rimanenze,venduto:venduto,closedAt:date+'T23:59:59'});
+  });
+  saveBancoStorico();
+  // Invia storico a Sheets
+  if(cfg.sheetUrl)syncBancoStorico(true);
+}
+
+function syncBancoStorico(silent){
+  if(!cfg.sheetUrl)return;
+  var toSync=bancoStorico.filter(function(s){return !s.synced;});
+  if(!toSync.length)return;
+  postSheet({action:'bancoStorico',records:toSync}).then(function(ok){
+    if(ok){toSync.forEach(function(s){s.synced=true;});saveBancoStorico();if(!silent)toast('Storico banco inviato ✓');}
+    else if(!silent)toast('Errore invio storico banco');
+  });
+}
+
+// Sync "Banco Oggi" — sovrascrive il foglio con lo stato attuale della giornata
+function syncBancoOggi(silent){
+  if(!cfg.sheetUrl)return;
+  var today=todayStr();
+  var caricoRec=bancoRecords.find(function(r){return r.date===today&&r.tipo==='carico';});
+  var rimRec=bancoRecords.find(function(r){return r.date===today&&r.tipo==='rimanenze';});
+  if(!caricoRec&&!rimRec)return;
+  // Calcola venduto attuale (vendite di oggi)
+  var dStart=new Date(today+'T00:00:00'), dEnd=new Date(today+'T23:59:59');
+  var vendutoOggi={};
+  sales.filter(function(s){var t=new Date(s.ts);return t>=dStart&&t<=dEnd;}).forEach(function(s){
+    s.items.forEach(function(it){vendutoOggi[it.name]=(vendutoOggi[it.name]||0)+(it.unit==='pz'?it.qty:it.qty);});
+  });
+  postSheet({action:'bancoOggi',date:today,
+    carico:caricoRec?caricoRec.items:[],
+    rimanenze:rimRec?rimRec.items:[],
+    venduto:vendutoOggi
+  }).then(function(ok){if(ok&&!silent)toast('Banco oggi aggiornato su Sheets ✓');});
+}
 
 function todayStr(){var d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')}
 
@@ -2581,6 +2705,7 @@ function saveBanco(){
   saveBancoLocal();
   bancoDraft={};
   syncBanco(false);
+  syncBancoOggi(false);
   renderBanco();
 }
 
@@ -3781,8 +3906,16 @@ function syncAll(showToast){
   fetchOperatoriFromSheet(true);
   if(showToast)setTimeout(function(){toast('Dati aggiornati ✓')},2500);
 }
+// Chiudi giorni passati (mezzanotte automatica) ad ogni avvio
+closePastDays();
+// Controlla mezzanotte ogni minuto
+setInterval(function(){
+  var h=new Date().getHours(),m=new Date().getMinutes();
+  if(h===0&&m===0)closePastDays();
+},60000);
+
 if(cfg.sheetUrl) syncAll(true);
-setInterval(function(){syncAll(false)},3*60*1000); // ogni 3 minuti invece di 5
+setInterval(function(){syncAll(false)},3*60*1000);
 window.addEventListener('online',function(){
   toast('Connessione ripristinata…');
   setTimeout(function(){syncAll(true)},1000);
