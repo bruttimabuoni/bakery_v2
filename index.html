@@ -355,6 +355,8 @@
   .ba-alert.warning{background:#FEF3C7;color:#92400E}
   .ba-alert.surplus{background:var(--pz-soft);color:var(--pz)}
   .ba-alert.ok{background:var(--kg-soft);color:var(--kg)}
+  .ba-alert.nodata{background:var(--surface-2);color:var(--ink-faint)}
+  .ba-card.alert-nodata{border-left:4px solid var(--line);opacity:.75}
   .ba-body{padding:0 14px 14px;display:none}
   .ba-body.open{display:block}
   .ba-stats{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px}
@@ -1341,9 +1343,12 @@ function renderBancoAnalysis(range){
     var avgLastHour=lastHours.length?lastHours.reduce(function(a,b){return a+b},0)/lastHours.length:null;
     var pctVenduto=avgCarico>0&&avgRim!=null?Math.round((avgCarico-avgRim)/avgCarico*100):null;
 
-    // Alert
+    // Alert — minimo 3 giorni per conclusioni affidabili
+    var MIN_DAYS=3;
     var alert='ok', alertMsg='Bilanciato';
-    if(avgLastHour!=null&&avgLastHour<10){alert='danger';alertMsg='⚠️ Finisce troppo presto (media '+fmtHour(avgLastHour)+')';}
+    if(nDays<MIN_DAYS){
+      alert='nodata';alertMsg='⏳ Dati insufficienti ('+nDays+' su '+MIN_DAYS+' giorni minimi)';
+    } else if(avgLastHour!=null&&avgLastHour<10){alert='danger';alertMsg='⚠️ Finisce troppo presto (media '+fmtHour(avgLastHour)+')';}
     else if(avgLastHour!=null&&avgLastHour<11.5){alert='warning';alertMsg='⚡ Tende a finire presto (media '+fmtHour(avgLastHour)+')';}
     else if(avgRim!=null&&avgCarico>0&&avgRim/avgCarico>0.25){alert='surplus';alertMsg='📦 Avanza regolarmente (avg '+Math.round(avgRim)+' pz)';}
     else{alert='ok';alertMsg='✓ Bilanciato';}
@@ -1376,22 +1381,31 @@ function renderBancoAnalysis(range){
     var lastHourCls=p.avgLastHour!=null?(p.avgLastHour<10?'red':p.avgLastHour<11.5?'amber':''):'';
     var pctVal=p.pctVenduto!=null?p.pctVenduto+'%':'—';
 
+    var bodyHtml;
+    if(p.alert==='nodata'){
+      bodyHtml='<div style="font-size:12.5px;color:var(--ink-soft);line-height:1.5;padding:8px 0">'
+        +'Registra almeno <b>3 giorni</b> di banco per questo prodotto per avere suggerimenti affidabili.'
+        +' Finora: <b>'+p.days.length+'</b> giorno'+(p.days.length===1?'':'i')+'.'
+        +'</div>';
+    } else {
+      bodyHtml='<div class="ba-stats">'
+        +'<div class="ba-stat"><div class="bs-lbl">Carico medio</div><div class="bs-val">'+Math.round(p.avgCarico)+' pz</div></div>'
+        +'<div class="ba-stat"><div class="bs-lbl">Rimanenze medie</div><div class="bs-val '+rimCls+'">'+rimVal+'</div></div>'
+        +'<div class="ba-stat"><div class="bs-lbl">% venduto</div><div class="bs-val">'+pctVal+'</div></div>'
+        +'<div class="ba-stat"><div class="bs-lbl">Ora esaurimento</div><div class="bs-val '+lastHourCls+'">'+lastHourVal+'</div></div>'
+        +'</div>'
+        +'<div style="font-size:11px;font-weight:700;color:var(--ink-faint);letter-spacing:.06em;text-transform:uppercase;margin-bottom:6px">Vendite per ora</div>'
+        +'<div class="ba-hourly">'+hbars+'</div>'
+        +(p.days.length>1?'<div style="font-size:11.5px;color:var(--ink-faint);margin-top:8px">Basato su '+p.days.length+' giorni · '+p.soldOutDays+' giorni esauriti</div>':'');
+    }
+
     return '<div class="ba-card alert-'+p.alert+'" id="bac-'+idx+'">'
       +'<div class="ba-head" onclick="toggleBaCard('+idx+')">'
       +'<div class="ba-name">'+esc(p.name)+'</div>'
       +'<span class="ba-alert '+p.alert+'">'+p.alertMsg+'</span>'
       +'</div>'
       +'<div class="ba-body" id="bab-'+idx+'">'
-      +'<div class="ba-stats">'
-      +'<div class="ba-stat"><div class="bs-lbl">Carico medio</div><div class="bs-val">'+Math.round(p.avgCarico)+' pz</div></div>'
-      +'<div class="ba-stat"><div class="bs-lbl">Rimanenze medie</div><div class="bs-val '+rimCls+'">'+rimVal+'</div></div>'
-      +'<div class="ba-stat"><div class="bs-lbl">% venduto</div><div class="bs-val">'+pctVal+'</div></div>'
-      +'<div class="ba-stat"><div class="bs-lbl">Ora esaurimento</div><div class="bs-val '+lastHourCls+'">'+lastHourVal+'</div></div>'
-      +'</div>'
-      +'<div style="font-size:11px;font-weight:700;color:var(--ink-faint);letter-spacing:.06em;text-transform:uppercase;margin-bottom:6px">Vendite per ora</div>'
-      +'<div class="ba-hourly">'+hbars+'</div>'
-      +(p.days.length>1?'<div style="font-size:11.5px;color:var(--ink-faint);margin-top:8px">Basato su '+p.days.length+' giorni · '
-        +p.soldOutDays+' giorni esauriti</div>':'')
+      +bodyHtml
       +'</div>'
       +'</div>';
   }).join('');
