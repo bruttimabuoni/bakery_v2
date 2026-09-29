@@ -317,6 +317,10 @@
   .empty{text-align:center;color:var(--ink-faint);padding:46px 20px;font-size:14.5px}
   .empty .big{font-size:30px;margin-bottom:8px}
   .help{font-size:12.5px;color:var(--ink-soft);line-height:1.5;margin:10px 2px}
+  .legend-block{display:flex;gap:12px;align-items:flex-start;margin-bottom:12px}
+  .lb-icon{width:36px;height:36px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0}
+  .lb-title{font-size:14px;font-weight:600;color:var(--ink);margin-bottom:2px}
+  .lb-text{font-size:12.5px;color:var(--ink-soft);line-height:1.5}
 
   .toast{
     position:fixed;left:50%;transform:translateX(-50%) translateY(20px);bottom:calc(var(--tabh) + 16px);
@@ -547,11 +551,16 @@
       <div class="panel"><h3>Ultimi scontrini <span id="receiptsCount"></span></h3><div id="recentReceipts"></div></div>
       <div class="panel" id="prodGiornoPanel" style="display:none">
         <h3>🧑‍🍳 Produzione di domani — <span id="prodGiornoTitle" style="font-weight:400;color:var(--ink-soft)"></span></h3>
+        <p class="help" style="margin-bottom:10px">Quantità suggerite basate sullo storico banco. Se la media avanzo è alta → riduci. Se vendi tutto e l'avanzo è quasi zero → rischi di finire, aumenta.</p>
         <div id="prodGiornoList"></div>
         <p style="font-size:11px;color:var(--ink-faint);margin-top:10px;line-height:1.4">Basato sullo storico banco, con correttivo per giorno della settimana. Migliora con l'aumentare dei dati.</p>
       </div>
       <div class="panel" id="bancoAnalysisPanel" style="display:none">
         <h3>Analisi banco <span id="bancoAnalysisPeriod"></span></h3>
+        <p class="help" style="margin-bottom:10px">
+          <b>↑</b> caricato &nbsp;·&nbsp; <b style="color:var(--pos)">✓</b> venduto &nbsp;·&nbsp; <b style="color:var(--accent)">←</b> avanzo &nbsp;·&nbsp;
+          <b style="color:var(--pos)">verde &gt;80%</b> ben calibrato &nbsp;·&nbsp; <b style="color:var(--accent)">arancio 50–80%</b> avanzo contenuto &nbsp;·&nbsp; <b style="color:var(--neg)">rosso &lt;50%</b> sovraproduzione
+        </p>
         <div id="bancoAnalysis"></div>
       </div>
     </div>
@@ -1650,26 +1659,30 @@ function updateProdSyncUI(msg,isError){
 function fetchProductsFromSheet(){
   if(!cfg.sheetUrl){toast('Nessun foglio collegato');return}
   updateProdSyncUI('caricamento…');
-  fetch(cfg.sheetUrl+'?action=products',{cache:'no-store'})
+  fetch(cfg.sheetUrl+'?action=products',{cache:'no-store',redirect:'follow'})
     .then(function(r){
       if(!r.ok)throw new Error('http '+r.status);
-      return r.json();
+      return r.text();
     })
-    .then(function(j){
-      if(!j||!j.ok||!Array.isArray(j.products))throw new Error('risposta non valida');
+    .then(function(txt){
+      var j;
+      try{j=JSON.parse(txt);}catch(e){throw new Error('risposta non JSON: '+txt.substring(0,80));}
+      if(!j||!j.ok||!Array.isArray(j.products))throw new Error('risposta non valida: '+JSON.stringify(j).substring(0,80));
       var imported=j.products.map(function(p){
         var days=Array.isArray(p.days)?p.days.map(Number).filter(function(n){return n>=0&&n<=6}):[];
         if(!days.length){var loc=products.find(function(x){return x.id===p.id});if(loc&&loc.days&&loc.days.length)days=loc.days.slice();}
         return {id:p.id||uid(),name:p.name,rep:p.rep||'Vari',unit:(p.unit==='kg'?'kg':'pz'),price:parseFloat(p.price)||0,days:days,banco:p.banco!==false,pesoMedio:parseFloat(p.pesoMedio)||0};
       }).filter(function(p){return p.name});
-      if(!imported.length){updateProdSyncUI('nessun prodotto nel foglio',true);return}
+      if(!imported.length){updateProdSyncUI('nessun prodotto nel foglio',true);
+        toast('Nessun prodotto nel foglio — invia prima da Impostazioni → Invia prodotti a Sheets');return}
       products=imported;cfg.lastProdSync=new Date().toISOString();save();saveCfg();
       renderAll();updateProdSyncUI();
       toast('Catalogo aggiornato: '+imported.length+' prodotti');
     })
     .catch(function(e){
       updateProdSyncUI('errore caricamento',true);
-      toast('Impossibile caricare i prodotti dal foglio');
+      toast('Caricamento prodotti fallito: '+(e&&e.message?e.message:'errore di rete'));
+      console.error('fetchProductsFromSheet',e);
     });
 }
 
