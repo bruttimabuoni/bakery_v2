@@ -1756,7 +1756,10 @@ function fetchProductsFromSheet(){
       }).filter(function(p){return p.name});
       if(!imported.length){updateProdSyncUI('nessun prodotto nel foglio',true);
         toast('Nessun prodotto nel foglio — invia prima da Impostazioni → Invia prodotti a Sheets');return}
-      products=imported;cfg.lastProdSync=new Date().toISOString();save();saveCfg();
+      products=imported;
+      if(Array.isArray(j.giorniChiusura))cfg.giorniChiusura=j.giorniChiusura.map(Number);
+      cfg.lastProdSync=new Date().toISOString();save();saveCfg();
+      renderGiorniChiusura();
       renderAll();updateProdSyncUI();
       toast('Catalogo aggiornato: '+imported.length+' prodotti');
     })
@@ -1773,7 +1776,7 @@ function pushProductsToSheet(silent){
   if(prodSyncing)return;
   prodSyncing=true;
   if(!silent)updateProdSyncUI('invio…');
-  var data={action:'products',products:products.map(function(p){
+  var data={action:'products',giorniChiusura:cfg.giorniChiusura||[],products:products.map(function(p){
     return {id:p.id,name:p.name,rep:p.rep,unit:p.unit,price:p.price,days:p.days||[],banco:p.banco!==false,pesoMedio:p.pesoMedio||0};
   })};
   postSheet(data).then(function(ok){
@@ -1815,7 +1818,7 @@ var APPS_SCRIPT_CODE=
 "    var payload = JSON.parse(e.postData.contents);\n"+
 "    var action  = payload.action || 'sales';\n"+
 "    if (action === 'ping') return jsonResponse({ok:true});\n"+
-"    if (action === 'products')      { saveProducts(payload.products); return jsonResponse({ok:true}); }\n"+
+"    if (action === 'products')      { saveProducts(payload.products, payload.giorniChiusura); return jsonResponse({ok:true}); }\n"+
 "    if (action === 'sales')         { saveSales(payload.sales); return jsonResponse({ok:true}); }\n"+
 "    if (action === 'resyncSales')   { clearAndSaveSales(payload.sales); return jsonResponse({ok:true}); }\n"+
 "    if (action === 'banco')         { saveBanco(payload.records); return jsonResponse({ok:true}); }\n"+
@@ -1837,8 +1840,11 @@ var APPS_SCRIPT_CODE=
 "function getProducts() {\n"+
 "  var ss = SpreadsheetApp.getActiveSpreadsheet();\n"+
 "  var sh = ss.getSheetByName(PRODUCTS_SHEET);\n"+
-"  if (!sh || sh.getLastRow() < 2) return {ok:true, products:[]};\n"+
-"  var rows = sh.getRange(2, 1, sh.getLastRow()-1, 8).getValues();\n"+
+"  if (!sh || sh.getLastRow() < 2) return {ok:true, products:[], giorniChiusura:[]};\n"+
+"  var rows = sh.getRange(2, 1, sh.getLastRow()-1, 9).getValues();\n"+
+"  var giorniChiusura = [];\n"+
+"  var gcRaw = String(rows[0][8]||'');\n"+
+"  if (gcRaw) giorniChiusura = gcRaw.split(',').map(function(n){return parseInt(n,10);}).filter(function(n){return !isNaN(n);});\n"+
 "  var products = rows\n"+
 "    .filter(function(r){ return r[1]; })\n"+
 "    .map(function(r){\n"+
@@ -1846,19 +1852,20 @@ var APPS_SCRIPT_CODE=
 "      var banco = r[6]===false||String(r[6]).toLowerCase()==='false'||r[6]==='No'||r[6]===0?false:true;\n"+
 "      return {id:r[0]||'', name:r[1], rep:r[2]||'Vari', unit:r[3]==='kg'?'kg':'pz', price:parseFloat(r[4])||0, days:days, banco:banco, pesoMedio:parseFloat(r[7])||0};\n"+
 "    });\n"+
-"  return {ok:true, products:products};\n"+
+"  return {ok:true, products:products, giorniChiusura:giorniChiusura};\n"+
 "}\n"+
 "\n"+
-"function saveProducts(products) {\n"+
-"  if (!products || !products.length) return; // non cancellare mai se la lista e vuota\n"+
+"function saveProducts(products, giorniChiusura) {\n"+
+"  if (!products || !products.length) return;\n"+
 "  var ss = SpreadsheetApp.getActiveSpreadsheet();\n"+
 "  var sh = ss.getSheetByName(PRODUCTS_SHEET);\n"+
 "  if (!sh) sh = ss.insertSheet(PRODUCTS_SHEET);\n"+
-"  sh.getRange(1,1,1,8).setValues([['ID','Nome','Reparto','Unita','Prezzo','Giorni (2=Mar,3=Mer,4=Gio,5=Ven,6=Sab)','Banco','Peso medio (g)']]);\n"+
-"  sh.getRange(1,1,1,8).setFontWeight('bold');\n"+
-"  if (sh.getLastRow() > 1) sh.getRange(2, 1, sh.getLastRow()-1, 8).clearContent();\n"+
-"  var rows = products.map(function(p){ return [p.id, p.name, p.rep, p.unit, p.price, (p.days||[]).join(';'), p.banco===false?'No':'Si', p.pesoMedio||0]; });\n"+
-"  sh.getRange(2, 1, rows.length, 8).setValues(rows);\n"+
+"  sh.getRange(1,1,1,9).setValues([['ID','Nome','Reparto','Unita','Prezzo','Giorni (2=Mar,3=Mer,4=Gio,5=Ven,6=Sab)','Banco','Peso medio (g)','GiorniChiusura']]);\n"+
+"  sh.getRange(1,1,1,9).setFontWeight('bold');\n"+
+"  if (sh.getLastRow() > 1) sh.getRange(2, 1, sh.getLastRow()-1, 9).clearContent();\n"+
+"  var gcStr = Array.isArray(giorniChiusura) ? giorniChiusura.join(',') : '';\n"+
+"  var rows = products.map(function(p, i){ return [p.id, p.name, p.rep, p.unit, p.price, (p.days||[]).join(';'), p.banco===false?'No':'Si', p.pesoMedio||0, i===0?gcStr:'']; });\n"+
+"  sh.getRange(2, 1, rows.length, 9).setValues(rows);\n"+
 "}\n"+
 "\n"+
 "// ----- vendite -----\n"+
