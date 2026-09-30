@@ -685,6 +685,13 @@
     </div>
 
     <div class="panel">
+      <h3>Migrazione dati banco</h3>
+      <p class="help" style="margin-bottom:4px">I dati banco registrati prima dell'aggiornamento vengono migrati automaticamente all'avvio. Usa questo pulsante per verificare o forzare la migrazione manualmente.</p>
+      <div id="migrazioneBancoStatus" class="help" style="margin-bottom:10px;color:var(--ink)"></div>
+      <button class="btn full sm" onclick="migrazioneBanco()">Analizza e migra dati banco pregressi</button>
+    </div>
+
+    <div class="panel">
       <h3>Backup ed esportazione</h3>
       <p class="help">Il backup salva tutto (prodotti + vendite) in un file da reimportare.</p>
       <button class="btn full sm" style="margin-bottom:9px" onclick="exportCSV()">Esporta vendite in CSV</button>
@@ -2653,18 +2660,41 @@ function _renderDiarioCalendar(byDate){
 
 function renderBanco(){
   var today=todayStr();
-  var lbl=bancoMode==='carico'?'Carico mattina':'Rimanenze sera';
+  var isReadOnly=bancoMode!=='diario'&&false; // impostato sotto
+  var lbl=bancoMode==='carico'?'☀️ Carico mattina':'🌙 Rimanenze sera';
   el('bancoDateLbl').textContent=lbl+' · '+new Date().toLocaleDateString('it-IT',{weekday:'long',day:'numeric',month:'long'});
 
-  // Cerca record già salvato oggi per questo tipo
   var existing=bancoRecords.find(function(r){return r.date===today&&r.tipo===bancoMode});
   var badge=el('bancoPrevBadge');
-  badge.textContent=existing?'già salvato oggi ✓':'';
+
+  // Giorno già archiviato nello storico = immutabile
+  var archiviato=bancoStorico.find(function(s){return s.date===today;});
+  if(archiviato){
+    badge.innerHTML='<span style="color:var(--ink-faint);font-size:11px">🔒 Giornata chiusa</span>';
+    el('bancoSaveBar').style.display='none';
+    // mostra i valori in sola lettura
+    var pool2=products.filter(function(p){return isAvailableToday(p)&&p.banco!==false});
+    var html2='<p class="help" style="margin:0 0 10px">I dati di oggi sono definitivi (archiviati a mezzanotte).</p>';
+    pool2.forEach(function(p){
+      var val=archiviato[bancoMode==='carico'?'carico':'rimanenze'][p.name];
+      if(val==null)return;
+      html2+='<div class="banco-row" style="opacity:.7">'
+        +'<div class="br-name">'+esc(p.name)+'</div>'
+        +'<div style="font-family:var(--mono);font-size:16px;padding:8px 10px">'+val+' pz</div>'
+        +'</div>';
+    });
+    el('bancoList').innerHTML=html2;
+    return;
+  }
+
+  badge.innerHTML=existing
+    ?'<span style="color:var(--pos);font-size:11px">✓ salvato — modifica e risalva</span>'
+    :'<span style="color:var(--ink-faint);font-size:11px">non ancora salvato</span>';
+  el('bancoSaveBar').style.display='';
 
   var pool=products.filter(function(p){return isAvailableToday(p)&&p.banco!==false});
   if(!pool.length){el('bancoList').innerHTML='<div class="empty"><div class="big">🥖</div>Nessun prodotto disponibile oggi.</div>';return}
 
-  // Raggruppa per reparto, ordine alfabetico
   var reps=[];
   pool.forEach(function(p){if(reps.indexOf(p.rep)<0)reps.push(p.rep)});
 
@@ -2673,37 +2703,55 @@ function renderBanco(){
     var inRep=pool.filter(function(p){return p.rep===rep}).sort(function(a,b){return a.name.localeCompare(b.name,'it')});
     html+='<div class="reparto-title">'+esc(rep)+'</div>';
     inRep.forEach(function(p){
-      var val = bancoDraft[p.id]!==undefined ? bancoDraft[p.id] : (existing?((existing.items.find(function(i){return i.productId===p.id})||{}).pezzi||''):'');
-      var pm = p.pesoMedio||0;
+      // Priorità: draft corrente > valore già salvato oggi > vuoto
+      var saved=existing?(existing.items.find(function(i){return i.productId===p.id;})||{}).pezzi:undefined;
+      var val=bancoDraft[p.id]!==undefined?bancoDraft[p.id]:(saved!==undefined?saved:'');
+      var pm=p.pesoMedio||0;
       html+='<div class="banco-row">'
         +'<div style="flex:1;min-width:0"><div class="br-name">'+esc(p.name)+'</div>'
         +(pm>0?'<div class="br-sub">'+pm+' g/pz</div>':'')
         +'</div>'
-        +'<input class="banco-input" type="number" min="0" step="1" placeholder="pz" value="'+esc(String(val))+'" oninput="setBancoDraft(\''+p.id+'\',this.value)">'
-        +'</div>';
+        +'<input class="banco-input" type="number" min="0" step="1" placeholder="pz" value="'+esc(String(val))+'" oninput="setBancoDraft(\''+p.id+'\',this.value,\''+esc(String(saved!==undefined?saved:''))+'\')"><'
+        +'/div>';
     });
   });
   el('bancoList').innerHTML=html;
 }
 
-function setBancoDraft(pid,v){bancoDraft[pid]=v===''?'':parseInt(v)||0}
+function setBancoDraft(pid,v,prev){
+  // Se il campo viene svuotato torna al valore precedente salvato
+  if(v==='')bancoDraft[pid]=prev!==''&&prev!==undefined?Number(prev):'';
+  else bancoDraft[pid]=parseInt(v)||0;
+}
 
 function saveBanco(){
   var today=todayStr();
-  var items=[];
+
+  // Blocca se già archiviato
+  if(bancoStorico.find(function(s){return s.date===today;})){
+    toast('La giornata è già chiusa — dati immutabili');return;
+  }
+
+  var existing=bancoRecords.find(function(r){return r.date===today&&r.tipo===bancoMode});
+
+  // Costruisce la mappa completa: parte dai valori già salvati, sovrascrive con il draft
+  var merged={};
+  if(existing)(existing.items||[]).forEach(function(it){merged[it.productId]={name:it.name,pezzi:it.pezzi,pesoMedio:it.pesoMedio||0};});
   products.filter(isAvailableToday).forEach(function(p){
-    var v=bancoDraft[p.id];
-    if(v===undefined||v==='')return;
-    items.push({productId:p.id,name:p.name,pezzi:parseInt(v)||0,pesoMedio:p.pesoMedio||0});
+    if(bancoDraft[p.id]!==undefined&&bancoDraft[p.id]!=='')
+      merged[p.id]={name:p.name,pezzi:parseInt(bancoDraft[p.id])||0,pesoMedio:p.pesoMedio||0};
   });
+
+  var items=Object.keys(merged).map(function(pid){return {productId:pid,name:merged[pid].name,pezzi:merged[pid].pezzi,pesoMedio:merged[pid].pesoMedio};});
   if(!items.length){toast('Inserisci almeno un valore');return}
 
-  // Rimuovi eventuale record precedente dello stesso giorno/tipo
+  // Sostituisce il record di oggi per questo tipo
   bancoRecords=bancoRecords.filter(function(r){return !(r.date===today&&r.tipo===bancoMode)});
   var rec={id:uid(),date:today,tipo:bancoMode,ts:new Date().toISOString(),items:items,synced:false};
   bancoRecords.push(rec);
   saveBancoLocal();
   bancoDraft={};
+  toast((bancoMode==='carico'?'Carico':'Rimanenze')+' salvato ✓');
   syncBanco(false);
   syncBancoOggi(false);
   renderBanco();
