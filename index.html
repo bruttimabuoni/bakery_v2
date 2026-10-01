@@ -1651,10 +1651,7 @@ function postSheet(payload){
   var url=cfg.sheetUrl;
   return fetch(url,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(payload)})
     .then(function(r){return r.json()}).then(function(j){return j&&j.ok===true})
-    .catch(function(){
-      return fetch(url,{method:'POST',mode:'no-cors',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(payload)})
-        .then(function(){return true}).catch(function(){return false});
-    });
+    .catch(function(){return false;});
 }
 function syncPending(silent,force){
   if(!cfg.sheetUrl||(!cfg.auto&&silent&&!force)){updateSyncUI();return}
@@ -1860,11 +1857,12 @@ var APPS_SCRIPT_CODE=
 "  var ss = SpreadsheetApp.getActiveSpreadsheet();\n"+
 "  var sh = ss.getSheetByName(PRODUCTS_SHEET);\n"+
 "  if (!sh) sh = ss.insertSheet(PRODUCTS_SHEET);\n"+
-"  sh.getRange(1,1,1,9).setValues([['ID','Nome','Reparto','Unita','Prezzo','Giorni (2=Mar,3=Mer,4=Gio,5=Ven,6=Sab)','Banco','Peso medio (g)','GiorniChiusura']]);\n"+
-"  sh.getRange(1,1,1,9).setFontWeight('bold');\n"+
-"  if (sh.getLastRow() > 1) sh.getRange(2, 1, sh.getLastRow()-1, 9).clearContent();\n"+
+"  // Assicura almeno 9 colonne\n"+
+"  if (sh.getMaxColumns() < 9) sh.insertColumnsAfter(sh.getMaxColumns(), 9 - sh.getMaxColumns());\n"+
+"  sh.getRange(1,1,1,9).setValues([['ID','Nome','Reparto','Unita','Prezzo','Giorni','Banco','Peso medio (g)','GiorniChiusura']]).setFontWeight('bold');\n"+
+"  if (sh.getLastRow() > 1) sh.getRange(2, 1, sh.getLastRow()-1, sh.getMaxColumns()).clearContent();\n"+
 "  var gcStr = Array.isArray(giorniChiusura) ? giorniChiusura.join(',') : '';\n"+
-"  var rows = products.map(function(p, i){ return [p.id, p.name, p.rep, p.unit, p.price, (p.days||[]).join(';'), p.banco===false?'No':'Si', p.pesoMedio||0, i===0?gcStr:'']; });\n"+
+"  var rows = products.map(function(p, i){ return [p.id||'', p.name||'', p.rep||'', p.unit||'pz', p.price||0, (p.days||[]).join(';'), p.banco===false?'No':'Si', p.pesoMedio||0, i===0?gcStr:'']; });\n"+
 "  sh.getRange(2, 1, rows.length, 9).setValues(rows);\n"+
 "}\n"+
 "\n"+
