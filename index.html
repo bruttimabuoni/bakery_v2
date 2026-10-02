@@ -2071,9 +2071,17 @@ var APPS_SCRIPT_CODE=
 "  if (!names.length) return;\n"+
 "  var rows = names.map(function(n) {\n"+
 "    var car = caricoMap[n]||0;\n"+
-"    var vend = parseFloat(vendutoMap[n])||0;\n"+
 "    var rim = rimMap[n]!=null ? rimMap[n] : '';\n"+
-"    var disp = car - vend;\n"+
+"    var vend, disp;\n"+
+"    if (rim !== '') {\n"+
+"      // Rimanenze fisiche disponibili: calcola venduto come carico - rimanenze (più preciso)\n"+
+"      vend = Math.max(0, car - rim);\n"+
+"      disp = rim;\n"+
+"    } else {\n"+
+"      // Stima da scontrini (prodotti pz già in pz; prodotti kg richiedono pesoMedio)\n"+
+"      vend = parseFloat(vendutoMap[n])||0;\n"+
+"      disp = Math.max(0, car - vend);\n"+
+"    }\n"+
 "    return [date, n, car, Math.round(vend*10)/10, rim, Math.round(disp*10)/10];\n"+
 "  });\n"+
 "  sh.getRange(2,1,rows.length,6).setValues(rows);\n"+
@@ -2585,11 +2593,19 @@ function syncBancoOggi(silent){
   var caricoRec=bancoRecords.find(function(r){return r.date===today&&r.tipo==='carico';});
   var rimRec=bancoRecords.find(function(r){return r.date===today&&r.tipo==='rimanenze';});
   if(!caricoRec&&!rimRec)return;
-  // Calcola venduto attuale (vendite di oggi)
+  // Mappa pesoMedio (grammi) per prodotto dal carico odierno
+  var pesoMedioMap={};
+  if(caricoRec)(caricoRec.items||[]).forEach(function(it){pesoMedioMap[it.name]=it.pesoMedio||0;});
+  // Calcola venduto attuale in PEZZI (converte kg→pz usando pesoMedio)
   var dStart=new Date(today+'T00:00:00'), dEnd=new Date(today+'T23:59:59');
   var vendutoOggi={};
   sales.filter(function(s){var t=new Date(s.ts);return t>=dStart&&t<=dEnd;}).forEach(function(s){
-    s.items.forEach(function(it){vendutoOggi[it.name]=(vendutoOggi[it.name]||0)+(it.unit==='pz'?it.qty:it.qty);});
+    s.items.forEach(function(it){
+      var pm=pesoMedioMap[it.name]||0;
+      // pesoMedio in grammi, it.qty in kg → pz = qty_kg / (peso_g/1000)
+      var pz=it.unit==='pz'?it.qty:(pm>0?Math.round(it.qty/(pm/1000)*10)/10:it.qty);
+      vendutoOggi[it.name]=(vendutoOggi[it.name]||0)+pz;
+    });
   });
   postSheet({action:'bancoOggi',date:today,
     carico:caricoRec?caricoRec.items:[],
