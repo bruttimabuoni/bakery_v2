@@ -3993,8 +3993,9 @@ function syncAll(showToast){
   syncPending(true,true);
   syncBanco(true);
   syncOrdini(true);
-  // Leggi subito prodotti/clienti/operatori (non dipendono dall'invio)
-  fetchProductsFromSheet();
+  // Invia prodotti locali prima di leggerli (previene sovrascrittura con dati vecchi)
+  pushProductsToSheet(true);
+  // Leggi clienti/operatori subito (non dipendono dall'invio)
   fetchClientiB2bFromSheet(true);
   fetchClientiB2cFromSheet(true);
   fetchOperatoriFromSheet(true);
@@ -4004,6 +4005,7 @@ function syncAll(showToast){
     fetchSalesFromSheet(true);
     fetchBancoFromSheet(true);
     fetchOrdiniFromSheet(true);
+    fetchProductsFromSheet();
     if(showToast)setTimeout(function(){toast('Dati aggiornati ✓')},2500);
   },3000);
 }
