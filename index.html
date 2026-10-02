@@ -1799,7 +1799,12 @@ function fetchProductsFromSheet(){
       }).filter(function(p){return p.name});
       if(!imported.length){updateProdSyncUI('nessun prodotto nel foglio',true);
         toast('Nessun prodotto nel foglio — invia prima da Impostazioni → Invia prodotti a Sheets');return}
-      products=imported;
+      // Merge: i prodotti sul foglio aggiornano quelli locali;
+      // i prodotti locali NON presenti sul foglio vengono conservati (non cancellati)
+      var remoteIds={};
+      imported.forEach(function(p){remoteIds[p.id]=true;});
+      var localOnly=products.filter(function(p){return !remoteIds[p.id];});
+      products=imported.concat(localOnly);
       if(Array.isArray(j.giorniChiusura))cfg.giorniChiusura=j.giorniChiusura.map(Number);
       cfg.lastProdSync=new Date().toISOString();save();saveCfg();
       renderGiorniChiusura();
@@ -3948,15 +3953,9 @@ setToday();renderAll();
 function syncTuttoOra(){
   if(!cfg.sheetUrl){toast('Nessun foglio collegato');return;}
   toast('Sincronizzazione in corso…');
-  // Invia solo dati append-only o esplicitamente locali
-  syncPending(true,true);   // vendite non sincronizzate (force=true bypassa il guard auto)
-  syncBanco(true);     // banco non sincronizzato
-  syncOrdini(true);    // ordini non sincronizzati
-  // NOTA: prodotti e clienti NON vengono inviati qui.
-  // I prodotti si inviano solo salvando/modificando un prodotto.
-  // I clienti si inviano solo salvando/modificando un cliente.
-  // Questo previene sovrascritture accidentali su Sheet.
-  // Legge tutto da Sheet (Sheet è fonte di verità per prodotti e clienti)
+  syncPending(true,true);
+  syncBanco(true);
+  syncOrdini(true);
   setTimeout(function(){
     fetchProductsFromSheet();
     fetchSalesFromSheet(true);
@@ -3966,7 +3965,7 @@ function syncTuttoOra(){
     fetchClientiB2cFromSheet(true);
     fetchOperatoriFromSheet(true);
     setTimeout(function(){toast('Sincronizzazione completata ✓')},2000);
-  },2000);
+  },3000);
 }
 
 function riscriviTutteLeVendite(){
@@ -3993,8 +3992,6 @@ function syncAll(showToast){
   syncPending(true,true);
   syncBanco(true);
   syncOrdini(true);
-  // Invia prodotti locali prima di leggerli (previene sovrascrittura con dati vecchi)
-  pushProductsToSheet(true);
   // Leggi clienti/operatori subito (non dipendono dall'invio)
   fetchClientiB2bFromSheet(true);
   fetchClientiB2cFromSheet(true);
