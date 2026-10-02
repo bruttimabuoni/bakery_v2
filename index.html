@@ -2021,14 +2021,16 @@ var APPS_SCRIPT_CODE=
 "    sh = ss.insertSheet(BANCO_SHEET);\n"+
 "    sh.getRange(1,1,1,7).setValues([['ID','Data','Tipo','Prodotto','ID Prodotto','Pezzi','Peso medio (kg)']]).setFontWeight('bold');\n"+
 "  }\n"+
-"  var existingIds = {};\n"+
-"  if (sh.getLastRow() > 1) sh.getRange(2,1,sh.getLastRow()-1,1).getValues().forEach(function(r){existingIds[r[0]]=true});\n"+
 "  var newRows = [];\n"+
 "  records.forEach(function(rec) {\n"+
-"    if (existingIds[rec.id]) {\n"+
-"      // aggiorna righe esistenti (cancella e riscrivi)\n"+
+"    // Rimuove sia le righe con stesso ID sia eventuali duplicati stessa data+tipo\n"+
+"    if (sh.getLastRow() > 1) {\n"+
 "      var all = sh.getDataRange().getValues();\n"+
-"      for (var i = all.length-1; i >= 1; i--) { if (all[i][0] === rec.id) sh.deleteRow(i+1); }\n"+
+"      for (var i = all.length-1; i >= 1; i--) {\n"+
+"        var rowId=String(all[i][0]), rowDate=all[i][1], rowTipo=String(all[i][2]);\n"+
+"        var rowDateStr=(rowDate instanceof Date&&!isNaN(rowDate))?Utilities.formatDate(rowDate,Session.getScriptTimeZone(),'yyyy-MM-dd'):String(rowDate).slice(0,10);\n"+
+"        if (rowId === rec.id || (rowDateStr === rec.date && rowTipo === rec.tipo)) sh.deleteRow(i+1);\n"+
+"      }\n"+
 "    }\n"+
 "    rec.items.forEach(function(it) {\n"+
 "      newRows.push([rec.id, rec.date, rec.tipo, it.name, it.productId, it.pezzi, it.pesoMedio||0]);\n"+
@@ -2850,15 +2852,22 @@ function fetchBancoFromSheet(silent){
     .then(function(r){if(!r.ok)throw 0;return r.json();})
     .then(function(j){
       if(!j||!j.ok||!Array.isArray(j.records))throw 0;
-      // Unisci: mantieni locali non ancora sul foglio
-      var remoteIds={};j.records.forEach(function(r){remoteIds[r.id]=true});
-      var localOnly=bancoRecords.filter(function(r){return !remoteIds[r.id]});
+      // Deduplica remoti: per stessa data+tipo tieni solo il record più recente (ts più alto)
+      var bestRemote={};
+      j.records.forEach(function(r){
+        var key=r.date+'|'+r.tipo;
+        if(!bestRemote[key]||String(r.ts||'')>String(bestRemote[key].ts||''))bestRemote[key]=r;
+      });
+      var dedupRemote=Object.keys(bestRemote).map(function(k){return bestRemote[k];});
+      var remoteIds={};dedupRemote.forEach(function(r){remoteIds[r.id]=true});
+      var localOnly=bancoRecords.filter(function(r){return !remoteIds[r.id]&&!(bestRemote[r.date+'|'+r.tipo])});
       // Preserva modifiche locali pendenti su record già esistenti sul foglio
-      var localPending={};bancoRecords.filter(function(r){return !r.synced&&remoteIds[r.id]}).forEach(function(r){localPending[r.id]=r});
-      bancoRecords=j.records.map(function(r){
-        if(localPending[r.id])return localPending[r.id];
+      var localPending={};bancoRecords.filter(function(r){return !r.synced}).forEach(function(r){localPending[r.date+'|'+r.tipo]=r});
+      bancoRecords=dedupRemote.map(function(r){
+        var key=r.date+'|'+r.tipo;
+        if(localPending[key])return localPending[key];
         r.synced=true;return r;
-      }).concat(localOnly); // localOnly mantiene synced=false
+      }).concat(localOnly);
       saveBancoLocal();
       if(el('view-banco')&&el('view-banco').classList.contains('on'))renderBanco();
       if(!silent)toast('Banco aggiornato ✓');
