@@ -2344,14 +2344,14 @@ var APPS_SCRIPT_CODE=
 "  var p2=fmt(new Date(now.getFullYear(),now.getMonth(),0));\n"+
 "  var sh = clearAndTitle(ss, 'Analisi Reparti', 'VENDITE PER REPARTO');\n"+
 "  sh.getRange('A3').setValue('Reparto - Totale').setFontWeight('bold').setBackground('#E8F5E9');\n"+
-"  sh.getRange('A4').setFormula('=IFERROR(QUERY(Vendite!A:I,\"SELECT D, sum(I), sum(G) WHERE D IS NOT NULL GROUP BY D ORDER BY sum(I) DESC LABEL D \\'Reparto\\', sum(I) \\'Incasso\\', sum(G) \\'Pz venduti\\'\"" +
-",1),\"\")' );\n"+
+"  sh.getRange('A4').setFormula('=IFERROR(QUERY(Vendite!A:I;\"SELECT D, sum(I), sum(G) WHERE D IS NOT NULL GROUP BY D ORDER BY sum(I) DESC LABEL D \\'Reparto\\', sum(I) \\'Incasso\\', sum(G) \\'Pz venduti\\'\"" +
+";1);\"\")' );\n"+
 "  sh.getRange('E3').setValue('Reparto - Mese corrente (' + c1.slice(0,7) + ')').setFontWeight('bold').setBackground('#C8E6C9');\n"+
-"  sh.getRange('E4').setFormula('=IFERROR(QUERY(Vendite!A:I,\"SELECT D, sum(I) WHERE D IS NOT NULL AND A >= date \\'' + c1 + '\\' AND A <= date \\'' + c2 + '\\' GROUP BY D ORDER BY sum(I) DESC LABEL D \\'Reparto\\', sum(I) \\'Incasso\\'\"" +
-",1),\"\")'); \n"+
+"  sh.getRange('E4').setFormula('=IFERROR(QUERY(Vendite!A:I;\"SELECT D, sum(I) WHERE D IS NOT NULL AND A >= date \\'' + c1 + '\\' AND A <= date \\'' + c2 + '\\' GROUP BY D ORDER BY sum(I) DESC LABEL D \\'Reparto\\', sum(I) \\'Incasso\\'\"" +
+";1);\"\")'); \n"+
 "  sh.getRange('H3').setValue('Reparto - Mese scorso (' + p1.slice(0,7) + ')').setFontWeight('bold').setBackground('#DCEDC8');\n"+
-"  sh.getRange('H4').setFormula('=IFERROR(QUERY(Vendite!A:I,\"SELECT D, sum(I) WHERE D IS NOT NULL AND A >= date \\'' + p1 + '\\' AND A <= date \\'' + p2 + '\\' GROUP BY D ORDER BY sum(I) DESC LABEL D \\'Reparto\\', sum(I) \\'Incasso\\'\"" +
-",1),\"\")'); \n"+
+"  sh.getRange('H4').setFormula('=IFERROR(QUERY(Vendite!A:I;\"SELECT D, sum(I) WHERE D IS NOT NULL AND A >= date \\'' + p1 + '\\' AND A <= date \\'' + p2 + '\\' GROUP BY D ORDER BY sum(I) DESC LABEL D \\'Reparto\\', sum(I) \\'Incasso\\'\"" +
+";1);\"\")'); \n"+
 "  sh.autoResizeColumns(1,10);\n"+
 "}\n"+
 "\n"+
@@ -2364,14 +2364,14 @@ var APPS_SCRIPT_CODE=
 "  var p2=fmt(new Date(now.getFullYear(),now.getMonth(),0));\n"+
 "  var sh = clearAndTitle(ss, 'Analisi Prodotti', 'VENDITE PER PRODOTTO');\n"+
 "  sh.getRange('A3').setValue('Top prodotti - Incasso totale').setFontWeight('bold').setBackground('#E3F2FD');\n"+
-"  sh.getRange('A4').setFormula('=IFERROR(QUERY(Vendite!A:I,\"SELECT E, D, sum(I), sum(G) WHERE E IS NOT NULL GROUP BY E, D ORDER BY sum(I) DESC LIMIT 40 LABEL E \\'Prodotto\\', D \\'Reparto\\', sum(I) \\'Incasso\\', sum(G) \\'Pz venduti\\'\"" +
-",1),\"\")'); \n"+
+"  sh.getRange('A4').setFormula('=IFERROR(QUERY(Vendite!A:I;\"SELECT E, D, sum(I), sum(G) WHERE E IS NOT NULL GROUP BY E, D ORDER BY sum(I) DESC LIMIT 40 LABEL E \\'Prodotto\\', D \\'Reparto\\', sum(I) \\'Incasso\\', sum(G) \\'Pz venduti\\'\"" +
+";1);\"\")'); \n"+
 "  sh.getRange('F3').setValue('Mese corrente (' + c1.slice(0,7) + ')').setFontWeight('bold').setBackground('#BBDEFB');\n"+
-"  sh.getRange('F4').setFormula('=IFERROR(QUERY(Vendite!A:I,\"SELECT E, sum(I), sum(G) WHERE E IS NOT NULL AND A >= date \\'' + c1 + '\\' AND A <= date \\'' + c2 + '\\' GROUP BY E ORDER BY sum(I) DESC LIMIT 40 LABEL E \\'Prodotto\\', sum(I) \\'Incasso\\', sum(G) \\'Pz\\'\"" +
-",1),\"\")'); \n"+
+"  sh.getRange('F4').setFormula('=IFERROR(QUERY(Vendite!A:I;\"SELECT E, sum(I), sum(G) WHERE E IS NOT NULL AND A >= date \\'' + c1 + '\\' AND A <= date \\'' + c2 + '\\' GROUP BY E ORDER BY sum(I) DESC LIMIT 40 LABEL E \\'Prodotto\\', sum(I) \\'Incasso\\', sum(G) \\'Pz\\'\"" +
+";1);\"\")'); \n"+
 "  sh.getRange('J3').setValue('Mese scorso (' + p1.slice(0,7) + ')').setFontWeight('bold').setBackground('#E1F5FE');\n"+
-"  sh.getRange('J4').setFormula('=IFERROR(QUERY(Vendite!A:I,\"SELECT E, sum(I), sum(G) WHERE E IS NOT NULL AND A >= date \\'' + p1 + '\\' AND A <= date \\'' + p2 + '\\' GROUP BY E ORDER BY sum(I) DESC LIMIT 40 LABEL E \\'Prodotto\\', sum(I) \\'Incasso\\', sum(G) \\'Pz\\'\"" +
-",1),\"\")'); \n"+
+"  sh.getRange('J4').setFormula('=IFERROR(QUERY(Vendite!A:I;\"SELECT E, sum(I), sum(G) WHERE E IS NOT NULL AND A >= date \\'' + p1 + '\\' AND A <= date \\'' + p2 + '\\' GROUP BY E ORDER BY sum(I) DESC LIMIT 40 LABEL E \\'Prodotto\\', sum(I) \\'Incasso\\', sum(G) \\'Pz\\'\"" +
+";1);\"\")'); \n"+
 "  sh.autoResizeColumns(1,13);\n"+
 "}\n"+
 "\n"+
@@ -2382,8 +2382,9 @@ var APPS_SCRIPT_CODE=
 "  var sh = clearAndTitle(ss, 'Andamento Vendite', 'ANDAMENTO VENDITE');\n"+
 "  // Giornaliero\n"+
 "  sh.getRange('A3').setValue('Incasso giornaliero (ultimi 90 gg)').setFontWeight('bold').setBackground('#FFF3E0');\n"+
-"  sh.getRange('A4').setFormula('=IFERROR(QUERY(Vendite!A:I,\"SELECT A, sum(I), count(C) WHERE A IS NOT NULL AND A >= date \\'' + ago90 + '\\' GROUP BY A ORDER BY A DESC LABEL A \\'Data\\', sum(I) \\'Incasso EUR\\', count(C) \\'N. scontrini\\'\"" +
-",1),\"\")'); \n"+
+"  sh.getRange('A4').setFormula('=IFERROR(QUERY(Vendite!A:I;\"SELECT A, sum(I), count(C) WHERE A IS NOT NULL AND A >= date \\'' + ago90 + '\\' GROUP BY A ORDER BY A DESC LABEL A \\'Data\\', sum(I) \\'Incasso EUR\\', count(C) \\'N. scontrini\\'\"" +
+";1);\"\")'); \n"+
+"  sh.getRange('A5:A500').setNumberFormat('dd/mm/yyyy');\n"+
 "  // Per ora\n"+
 "  sh.getRange('E3').setValue('Vendite per ora del giorno').setFontWeight('bold').setBackground('#F3E5F5');\n"+
 "  sh.getRange('E4').setValue('Ora'); sh.getRange('F4').setValue('Incasso'); sh.getRange('G4').setValue('N.vendite');\n"+
@@ -2391,8 +2392,8 @@ var APPS_SCRIPT_CODE=
 "  for (var h=6; h<=20; h++) {\n"+
 "    var r = h-6+5;\n"+
 "    sh.getRange(r,5).setValue(h+':00');\n"+
-"    sh.getRange(r,6).setFormula('=SUMPRODUCT((IFERROR(VALUE(LEFT(Vendite!B$2:B,2)),99)='+h+')*(Vendite!I$2:I))');\n"+
-"    sh.getRange(r,7).setFormula('=SUMPRODUCT((IFERROR(VALUE(LEFT(Vendite!B$2:B,2)),99)='+h+')*ISNUMBER(Vendite!I$2:I)*1)');\n"+
+"    sh.getRange(r,6).setFormula('=SUMPRODUCT((IFERROR(VALUE(LEFT(Vendite!B$2:B;2));99)='+h+')*(Vendite!I$2:I))');\n"+
+"    sh.getRange(r,7).setFormula('=SUMPRODUCT((IFERROR(VALUE(LEFT(Vendite!B$2:B;2));99)='+h+')*ISNUMBER(Vendite!I$2:I)*1)');\n"+
 "  }\n"+
 "  // Per giorno settimana\n"+
 "  sh.getRange('I3').setValue('Vendite per giorno settimana').setFontWeight('bold').setBackground('#E8EAF6');\n"+
@@ -2400,11 +2401,11 @@ var APPS_SCRIPT_CODE=
 "  var GIORNI=['Lunedi','Martedi','Mercoledi','Giovedi','Venerdi','Sabato','Domenica'];\n"+
 "  for (var d=0; d<7; d++) {\n"+
 "    sh.getRange(5+d,9).setValue(GIORNI[d]);\n"+
-"    sh.getRange(5+d,10).setFormula('=IFERROR(SUMPRODUCT((WEEKDAY(Vendite!A$2:A,2)='+(d+1)+')*(Vendite!I$2:I)),0)');\n"+
+"    sh.getRange(5+d,10).setFormula('=IFERROR(SUMPRODUCT((WEEKDAY(Vendite!A$2:A;2)='+(d+1)+')*(Vendite!I$2:I));0)');\n"+
 "  }\n"+
 "  // Per mese\n"+
 "  sh.getRange('L3').setValue('Vendite per mese').setFontWeight('bold').setBackground('#E0F2F1');\n"+
-"  sh.getRange('L4').setFormula('=IFERROR(QUERY(Vendite!A:I,\"SELECT YEAR(A), MONTH(A), sum(I), count(C) WHERE A IS NOT NULL GROUP BY YEAR(A), MONTH(A) ORDER BY YEAR(A) DESC, MONTH(A) DESC LIMIT 24 LABEL YEAR(A) \\'Anno\\', MONTH(A) \\'Mese\\', sum(I) \\'Incasso EUR\\', count(C) \\'Scontrini\\'\",1),\"\")'); \n"+
+"  sh.getRange('L4').setFormula('=IFERROR(QUERY(Vendite!A:I;\"SELECT YEAR(A), MONTH(A), sum(I), count(C) WHERE A IS NOT NULL GROUP BY YEAR(A), MONTH(A) ORDER BY YEAR(A) DESC, MONTH(A) DESC LIMIT 24 LABEL YEAR(A) \\'Anno\\', MONTH(A) \\'Mese\\', sum(I) \\'Incasso EUR\\', count(C) \\'Scontrini\\'\";1);\"\")'); \n"+
 "  try {\n"+
 "    var existing = sh.getCharts(); existing.forEach(function(c){sh.removeChart(c);});\n"+
 "    sh.insertChart(sh.newChart().setChartType(Charts.ChartType.LINE).addRange(sh.getRange(4,1,91,2)).setPosition(3,16,0,0).setOption('title','Incasso giornaliero').setOption('width',520).setOption('height',280).setOption('series',{0:{color:'#E65100'}}).build());\n"+
