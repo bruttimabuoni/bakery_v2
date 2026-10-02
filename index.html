@@ -3871,6 +3871,8 @@ function fetchSalesFromSheet(silent){
       var remoteIds={};
       j.sales.forEach(function(s){remoteIds[s.id]=true});
       var localOnly=sales.filter(function(s){return !remoteIds[s.id]});
+      // Qualsiasi vendita non confermata sul foglio viene rimarcata pending → verrà reinviata
+      localOnly.forEach(function(s){s.synced=false;});
       // Ricostruisce timestamp da data+ora grezzi restituiti dal foglio
       j.sales.forEach(function(s){
         if(s.data&&s.ora){
@@ -3880,7 +3882,7 @@ function fetchSalesFromSheet(silent){
           if(!isNaN(d.getTime()))s.ts=d.toISOString();
         }
       });
-      // Preserva vendite locali pendenti non ancora sul foglio (localOnly mantiene synced=false)
+      // Preserva vendite locali non ancora sul foglio
       sales=j.sales.map(function(s){s.synced=true;return s;}).concat(localOnly);
       save();renderAll();
       if(!silent)toast('Vendite aggiornate dal foglio ✓ ('+j.sales.length+')');
@@ -3938,19 +3940,23 @@ function syncAll(showToast){
   if(!cfg.sheetUrl)return;
   _lastSyncTime=Date.now();
   if(showToast)toast('Aggiornamento in corso…');
-  // Invia pendenti (force=true bypassa il guard cfg.auto)
+  // Prima invia i dati pendenti
   syncPending(true,true);
   syncBanco(true);
   syncOrdini(true);
-  // Poi legge tutto da Sheet
+  // Leggi subito prodotti/clienti/operatori (non dipendono dall'invio)
   fetchProductsFromSheet();
-  fetchSalesFromSheet(true);
-  fetchBancoFromSheet(true);
-  fetchOrdiniFromSheet(true);
   fetchClientiB2bFromSheet(true);
   fetchClientiB2cFromSheet(true);
   fetchOperatoriFromSheet(true);
-  if(showToast)setTimeout(function(){toast('Dati aggiornati ✓')},2500);
+  // Vendite e banco: aspetta 3s per dare tempo al POST di completarsi
+  // così il fetch vede già i dati appena inviati ed evita discordanze
+  setTimeout(function(){
+    fetchSalesFromSheet(true);
+    fetchBancoFromSheet(true);
+    fetchOrdiniFromSheet(true);
+    if(showToast)setTimeout(function(){toast('Dati aggiornati ✓')},2500);
+  },3000);
 }
 // Chiudi giorni passati (mezzanotte automatica) ad ogni avvio
 closePastDays();
