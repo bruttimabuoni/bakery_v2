@@ -1825,7 +1825,7 @@ function pushProductsToSheet(silent){
   prodSyncing=true;
   if(!silent)updateProdSyncUI('invio…');
   var data={action:'products',giorniChiusura:cfg.giorniChiusura||[],products:products.map(function(p){
-    return {id:p.id,name:p.name,rep:p.rep,unit:p.unit,price:p.price,days:p.days||[],banco:p.banco!==false,pesoMedio:p.pesoMedio||0};
+    return {id:p.id,name:p.name,rep:p.rep,unit:p.unit,price:p.price,days:p.days||[],banco:p.banco===false?false:(p.banco||'tgtg'),pesoMedio:p.pesoMedio||0};
   })};
   postSheet(data).then(function(ok){
     prodSyncing=false;
@@ -2181,39 +2181,49 @@ var APPS_SCRIPT_CODE=
 "\n"+
 "function buildSheetBanco(ss) {\n"+
 "  var sh = clearAndTitle(ss, 'Analisi Banco', 'ANALISI BANCO - CONSIGLI PRODUZIONE');\n"+
-"  var bancoSh = ss.getSheetByName('Banco');\n"+
-"  if (!bancoSh || bancoSh.getLastRow() < 2) { sh.getRange('A3').setValue('Nessun dato banco. Carica almeno una settimana di dati.'); return; }\n"+
+"  // Legge da 'Banco Storico' (nuova architettura): Data, Prodotto, Carico, Venduto, Rimanenze, % venduto\n"+
+"  var bancoSh = ss.getSheetByName('Banco Storico') || ss.getSheetByName('Banco');\n"+
+"  if (!bancoSh || bancoSh.getLastRow() < 2) { sh.getRange('A3').setValue('Nessun dato banco storico. Inizia a registrare il banco ogni giorno: i dati vengono archiviati automaticamente a mezzanotte.'); return; }\n"+
 "\n"+
-"  // Leggi banco: [id, date, tipo, nome, idProd, pezzi, pesoMedio]\n"+
-"  var bRows = bancoSh.getRange(2,1,bancoSh.getLastRow()-1,7).getValues();\n"+
-"  var byKey = {};\n"+
-"  bRows.forEach(function(r) {\n"+
-"    var date = r[1] instanceof Date ? Utilities.formatDate(r[1],'Europe/Rome','yyyy-MM-dd') : String(r[1]);\n"+
-"    var tipo = String(r[2]), name = String(r[3]), pz = parseFloat(r[5])||0;\n"+
-"    var key = date+'|'+name;\n"+
-"    if (!byKey[key]) byKey[key] = {date:date, name:name, carico:null, rimanenze:null};\n"+
-"    if (tipo==='carico') byKey[key].carico = pz;\n"+
-"    else if (tipo==='rimanenze') byKey[key].rimanenze = pz;\n"+
-"  });\n"+
-"\n"+
-"  // Raggruppa per prodotto\n"+
+"  var lastCol = bancoSh.getLastColumn();\n"+
+"  var bRows = bancoSh.getRange(2,1,bancoSh.getLastRow()-1,lastCol).getValues();\n"+
 "  var byProd = {};\n"+
-"  Object.keys(byKey).forEach(function(key) {\n"+
-"    var d = byKey[key];\n"+
-"    if (d.carico === null) return;\n"+
-"    var venduto = d.rimanenze !== null ? d.carico - d.rimanenze : d.carico;\n"+
-"    var dateObj = new Date(d.date + 'T12:00:00');\n"+
-"    if (!byProd[d.name]) byProd[d.name] = [];\n"+
-"    byProd[d.name].push({\n"+
-"      date: d.date,\n"+
-"      month: d.date.slice(0,7),\n"+
-"      monthNum: dateObj.getMonth()+1,\n"+
-"      carico: d.carico,\n"+
-"      rimanenze: d.rimanenze,\n"+
-"      venduto: Math.max(0, venduto),\n"+
-"      soldOut: d.rimanenze === 0\n"+
+"\n"+
+"  // Rileva formato: Banco Storico (col A=data, B=prodotto, C=carico, D=venduto, E=rimanenze)\n"+
+"  //                 Banco vecchio  (col A=id,   B=data,    C=tipo,   D=nome,    F=pezzi)\n"+
+"  var isStorico = lastCol <= 6 && bRows.length > 0 && !(bRows[0][2]==='carico'||bRows[0][2]==='rimanenze');\n"+
+"\n"+
+"  if (isStorico) {\n"+
+"    // Formato Banco Storico: Data | Prodotto | Carico | Venduto | Rimanenze | %venduto\n"+
+"    bRows.forEach(function(r) {\n"+
+"      var date = r[0] instanceof Date ? Utilities.formatDate(r[0],'Europe/Rome','yyyy-MM-dd') : String(r[0]);\n"+
+"      var name = String(r[1]), carico = parseFloat(r[2])||0, venduto = parseFloat(r[3])||0, rim = r[4]!==''&&r[4]!==null ? parseFloat(r[4]) : null;\n"+
+"      if (!name || !date) return;\n"+
+"      var dateObj = new Date(date + 'T12:00:00');\n"+
+"      if (!byProd[name]) byProd[name] = [];\n"+
+"      byProd[name].push({date:date, month:date.slice(0,7), monthNum:dateObj.getMonth()+1, carico:carico, rimanenze:rim, venduto:Math.max(0,venduto), soldOut:rim===0});\n"+
 "    });\n"+
-"  });\n"+
+"  } else {\n"+
+"    // Formato Banco vecchio: ID | Data | Tipo | Nome | IDProd | Pezzi | PesoMedio\n"+
+"    var byKey = {};\n"+
+"    bRows.forEach(function(r) {\n"+
+"      var date = r[1] instanceof Date ? Utilities.formatDate(r[1],'Europe/Rome','yyyy-MM-dd') : String(r[1]);\n"+
+"      var tipo = String(r[2]), name = String(r[3]), pz = parseFloat(r[5])||0;\n"+
+"      var key = date+'|'+name;\n"+
+"      if (!byKey[key]) byKey[key] = {date:date, name:name, carico:null, rimanenze:null};\n"+
+"      if (tipo==='carico') byKey[key].carico = pz;\n"+
+"      else if (tipo==='rimanenze') byKey[key].rimanenze = pz;\n"+
+"    });\n"+
+"    Object.keys(byKey).forEach(function(key) {\n"+
+"      var d = byKey[key];\n"+
+"      if (d.carico === null) return;\n"+
+"      var venduto = d.rimanenze !== null ? d.carico - d.rimanenze : d.carico;\n"+
+"      var dateObj = new Date(d.date + 'T12:00:00');\n"+
+"      if (!byProd[d.name]) byProd[d.name] = [];\n"+
+"      byProd[d.name].push({date:d.date, month:d.date.slice(0,7), monthNum:dateObj.getMonth()+1, carico:d.carico, rimanenze:d.rimanenze, venduto:Math.max(0,venduto), soldOut:d.rimanenze===0});\n"+
+"    });\n"+
+"  }\n"+
+"\n"+
 "\n"+
 "  var today = new Date();\n"+
 "  var thisMonth = Utilities.formatDate(today,'Europe/Rome','yyyy-MM');\n"+
@@ -2325,10 +2335,10 @@ var APPS_SCRIPT_CODE=
 "\n"+
 "function buildSheetReparti(ss) {\n"+
 "  var now = new Date();\n"+
-"  var curM = now.getMonth();  // 0-11, uguale a QUERY month()\n"+
+"  var curM = now.getMonth() + 1;  // QUERY month() è 1-indexed (1=gen, 12=dic)\n"+
 "  var curY = now.getFullYear();\n"+
-"  var prevM = curM === 0 ? 11 : curM - 1;\n"+
-"  var prevY = curM === 0 ? curY - 1 : curY;\n"+
+"  var prevM = curM === 1 ? 12 : curM - 1;\n"+
+"  var prevY = curM === 1 ? curY - 1 : curY;\n"+
 "  var sh = clearAndTitle(ss, 'Analisi Reparti', 'VENDITE PER REPARTO');\n"+
 "  sh.getRange('A3').setValue('Reparto - Totale').setFontWeight('bold').setBackground('#E8F5E9');\n"+
 "  sh.getRange('A4').setFormula('=IFERROR(QUERY(Vendite!A:I,\"SELECT D, sum(I), sum(G) WHERE D IS NOT NULL GROUP BY D ORDER BY sum(I) DESC LABEL D \\'Reparto\\', sum(I) \\'Incasso\\', sum(G) \\'Pz venduti\\'\",1),{\"Reparto\",\"Incasso\",\"Pz\"})' );\n"+
@@ -2341,10 +2351,10 @@ var APPS_SCRIPT_CODE=
 "\n"+
 "function buildSheetProdotti(ss) {\n"+
 "  var now = new Date();\n"+
-"  var curM = now.getMonth();\n"+
+"  var curM = now.getMonth() + 1;\n"+
 "  var curY = now.getFullYear();\n"+
-"  var prevM = curM === 0 ? 11 : curM - 1;\n"+
-"  var prevY = curM === 0 ? curY - 1 : curY;\n"+
+"  var prevM = curM === 1 ? 12 : curM - 1;\n"+
+"  var prevY = curM === 1 ? curY - 1 : curY;\n"+
 "  var sh = clearAndTitle(ss, 'Analisi Prodotti', 'VENDITE PER PRODOTTO');\n"+
 "  sh.getRange('A3').setValue('Top prodotti - Incasso totale').setFontWeight('bold').setBackground('#E3F2FD');\n"+
 "  sh.getRange('A4').setFormula('=IFERROR(QUERY(Vendite!A:I,\"SELECT E, D, sum(I), sum(G) WHERE E IS NOT NULL GROUP BY E, D ORDER BY sum(I) DESC LIMIT 40 LABEL E \\'Prodotto\\', D \\'Reparto\\', sum(I) \\'Incasso\\', sum(G) \\'Pz venduti\\'\",1),{\"Prodotto\",\"Reparto\",\"Incasso\",\"Pz\"})');\n"+
