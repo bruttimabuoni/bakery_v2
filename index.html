@@ -2335,41 +2335,53 @@ var APPS_SCRIPT_CODE=
 "\n"+
 "function buildSheetReparti(ss) {\n"+
 "  var now = new Date();\n"+
-"  var curM = now.getMonth() + 1;  // QUERY month() è 1-indexed (1=gen, 12=dic)\n"+
-"  var curY = now.getFullYear();\n"+
-"  var prevM = curM === 1 ? 12 : curM - 1;\n"+
-"  var prevY = curM === 1 ? curY - 1 : curY;\n"+
+"  var fmt = function(d){return Utilities.formatDate(d,'Europe/Rome','yyyy-MM-dd');};\n"+
+"  var c1=fmt(new Date(now.getFullYear(),now.getMonth(),1));\n"+
+"  var c2=fmt(new Date(now.getFullYear(),now.getMonth()+1,0));\n"+
+"  var p1=fmt(new Date(now.getFullYear(),now.getMonth()-1,1));\n"+
+"  var p2=fmt(new Date(now.getFullYear(),now.getMonth(),0));\n"+
 "  var sh = clearAndTitle(ss, 'Analisi Reparti', 'VENDITE PER REPARTO');\n"+
 "  sh.getRange('A3').setValue('Reparto - Totale').setFontWeight('bold').setBackground('#E8F5E9');\n"+
-"  sh.getRange('A4').setFormula('=IFERROR(QUERY(Vendite!A:I,\"SELECT D, sum(I), sum(G) WHERE D IS NOT NULL GROUP BY D ORDER BY sum(I) DESC LABEL D \\'Reparto\\', sum(I) \\'Incasso\\', sum(G) \\'Pz venduti\\'\",1),{\"Reparto\",\"Incasso\",\"Pz\"})' );\n"+
-"  sh.getRange('E3').setValue('Reparto - Mese corrente').setFontWeight('bold').setBackground('#C8E6C9');\n"+
-"  sh.getRange('E4').setFormula('=IFERROR(QUERY(Vendite!A:I,\"SELECT D, sum(I) WHERE D IS NOT NULL AND month(A)='+curM+' AND year(A)='+curY+' GROUP BY D ORDER BY sum(I) DESC LABEL D \\'Reparto\\', sum(I) \\'Incasso\\'\",1),{\"Reparto\",\"Incasso\"})');\n"+
-"  sh.getRange('H3').setValue('Reparto - Mese scorso').setFontWeight('bold').setBackground('#DCEDC8');\n"+
-"  sh.getRange('H4').setFormula('=IFERROR(QUERY(Vendite!A:I,\"SELECT D, sum(I) WHERE D IS NOT NULL AND month(A)='+prevM+' AND year(A)='+prevY+' GROUP BY D ORDER BY sum(I) DESC LABEL D \\'Reparto\\', sum(I) \\'Incasso\\'\",1),{\"Reparto\",\"Incasso\"})');\n"+
+"  sh.getRange('A4').setFormula('=IFERROR(QUERY(Vendite!A:I,\"SELECT D, sum(I), sum(G) WHERE D IS NOT NULL GROUP BY D ORDER BY sum(I) DESC LABEL D \\'Reparto\\', sum(I) \\'Incasso\\', sum(G) \\'Pz venduti\\'\"," +
+"1),{\"Reparto\",\"Incasso\",\"Pz\"})' );\n"+
+"  sh.getRange('E3').setValue('Reparto - Mese corrente (' + c1.slice(0,7) + ')').setFontWeight('bold').setBackground('#C8E6C9');\n"+
+"  sh.getRange('E4').setFormula('=IFERROR(QUERY(Vendite!A:I,\"SELECT D, sum(I) WHERE D IS NOT NULL AND A >= date \\'' + c1 + '\\' AND A <= date \\'' + c2 + '\\' GROUP BY D ORDER BY sum(I) DESC LABEL D \\'Reparto\\', sum(I) \\'Incasso\\'\"," +
+"1),{\"Reparto\",\"Incasso\"})'); \n"+
+"  sh.getRange('H3').setValue('Reparto - Mese scorso (' + p1.slice(0,7) + ')').setFontWeight('bold').setBackground('#DCEDC8');\n"+
+"  sh.getRange('H4').setFormula('=IFERROR(QUERY(Vendite!A:I,\"SELECT D, sum(I) WHERE D IS NOT NULL AND A >= date \\'' + p1 + '\\' AND A <= date \\'' + p2 + '\\' GROUP BY D ORDER BY sum(I) DESC LABEL D \\'Reparto\\', sum(I) \\'Incasso\\'\"," +
+"1),{\"Reparto\",\"Incasso\"})'); \n"+
 "  sh.autoResizeColumns(1,10);\n"+
 "}\n"+
 "\n"+
 "function buildSheetProdotti(ss) {\n"+
 "  var now = new Date();\n"+
-"  var curM = now.getMonth() + 1;\n"+
-"  var curY = now.getFullYear();\n"+
-"  var prevM = curM === 1 ? 12 : curM - 1;\n"+
-"  var prevY = curM === 1 ? curY - 1 : curY;\n"+
+"  var fmt = function(d){return Utilities.formatDate(d,'Europe/Rome','yyyy-MM-dd');};\n"+
+"  var c1=fmt(new Date(now.getFullYear(),now.getMonth(),1));\n"+
+"  var c2=fmt(new Date(now.getFullYear(),now.getMonth()+1,0));\n"+
+"  var p1=fmt(new Date(now.getFullYear(),now.getMonth()-1,1));\n"+
+"  var p2=fmt(new Date(now.getFullYear(),now.getMonth(),0));\n"+
 "  var sh = clearAndTitle(ss, 'Analisi Prodotti', 'VENDITE PER PRODOTTO');\n"+
 "  sh.getRange('A3').setValue('Top prodotti - Incasso totale').setFontWeight('bold').setBackground('#E3F2FD');\n"+
-"  sh.getRange('A4').setFormula('=IFERROR(QUERY(Vendite!A:I,\"SELECT E, D, sum(I), sum(G) WHERE E IS NOT NULL GROUP BY E, D ORDER BY sum(I) DESC LIMIT 40 LABEL E \\'Prodotto\\', D \\'Reparto\\', sum(I) \\'Incasso\\', sum(G) \\'Pz venduti\\'\",1),{\"Prodotto\",\"Reparto\",\"Incasso\",\"Pz\"})');\n"+
-"  sh.getRange('F3').setValue('Mese corrente').setFontWeight('bold').setBackground('#BBDEFB');\n"+
-"  sh.getRange('F4').setFormula('=IFERROR(QUERY(Vendite!A:I,\"SELECT E, sum(I), sum(G) WHERE E IS NOT NULL AND month(A)='+curM+' AND year(A)='+curY+' GROUP BY E ORDER BY sum(I) DESC LIMIT 40 LABEL E \\'Prodotto\\', sum(I) \\'Incasso\\', sum(G) \\'Pz\\'\",1),{\"Prodotto\",\"Incasso\",\"Pz\"})');\n"+
-"  sh.getRange('J3').setValue('Mese scorso').setFontWeight('bold').setBackground('#E1F5FE');\n"+
-"  sh.getRange('J4').setFormula('=IFERROR(QUERY(Vendite!A:I,\"SELECT E, sum(I), sum(G) WHERE E IS NOT NULL AND month(A)='+prevM+' AND year(A)='+prevY+' GROUP BY E ORDER BY sum(I) DESC LIMIT 40 LABEL E \\'Prodotto\\', sum(I) \\'Incasso\\', sum(G) \\'Pz\\'\",1),{\"Prodotto\",\"Incasso\",\"Pz\"})');\n"+
+"  sh.getRange('A4').setFormula('=IFERROR(QUERY(Vendite!A:I,\"SELECT E, D, sum(I), sum(G) WHERE E IS NOT NULL GROUP BY E, D ORDER BY sum(I) DESC LIMIT 40 LABEL E \\'Prodotto\\', D \\'Reparto\\', sum(I) \\'Incasso\\', sum(G) \\'Pz venduti\\'\"," +
+"1),{\"Prodotto\",\"Reparto\",\"Incasso\",\"Pz\"})'); \n"+
+"  sh.getRange('F3').setValue('Mese corrente (' + c1.slice(0,7) + ')').setFontWeight('bold').setBackground('#BBDEFB');\n"+
+"  sh.getRange('F4').setFormula('=IFERROR(QUERY(Vendite!A:I,\"SELECT E, sum(I), sum(G) WHERE E IS NOT NULL AND A >= date \\'' + c1 + '\\' AND A <= date \\'' + c2 + '\\' GROUP BY E ORDER BY sum(I) DESC LIMIT 40 LABEL E \\'Prodotto\\', sum(I) \\'Incasso\\', sum(G) \\'Pz\\'\"," +
+"1),{\"Prodotto\",\"Incasso\",\"Pz\"})'); \n"+
+"  sh.getRange('J3').setValue('Mese scorso (' + p1.slice(0,7) + ')').setFontWeight('bold').setBackground('#E1F5FE');\n"+
+"  sh.getRange('J4').setFormula('=IFERROR(QUERY(Vendite!A:I,\"SELECT E, sum(I), sum(G) WHERE E IS NOT NULL AND A >= date \\'' + p1 + '\\' AND A <= date \\'' + p2 + '\\' GROUP BY E ORDER BY sum(I) DESC LIMIT 40 LABEL E \\'Prodotto\\', sum(I) \\'Incasso\\', sum(G) \\'Pz\\'\"," +
+"1),{\"Prodotto\",\"Incasso\",\"Pz\"})'); \n"+
 "  sh.autoResizeColumns(1,13);\n"+
 "}\n"+
 "\n"+
 "function buildSheetAndamento(ss) {\n"+
+"  var now = new Date();\n"+
+"  var fmt = function(d){return Utilities.formatDate(d,'Europe/Rome','yyyy-MM-dd');};\n"+
+"  var ago90 = fmt(new Date(now.getTime()-90*24*3600*1000));\n"+
 "  var sh = clearAndTitle(ss, 'Andamento Vendite', 'ANDAMENTO VENDITE');\n"+
 "  // Giornaliero\n"+
 "  sh.getRange('A3').setValue('Incasso giornaliero (ultimi 90 gg)').setFontWeight('bold').setBackground('#FFF3E0');\n"+
-"  sh.getRange('A4').setFormula('=IFERROR(QUERY(Vendite!A:I,\"SELECT A, sum(I), count(C) WHERE A IS NOT NULL GROUP BY A ORDER BY A DESC LIMIT 90 LABEL A \\'Data\\', sum(I) \\'Incasso EUR\\', count(C) \\'N. scontrini\\'\",1),{\"Data\",\"Incasso\",\"Scontrini\"})');\n"+
+"  sh.getRange('A4').setFormula('=IFERROR(QUERY(Vendite!A:I,\"SELECT A, sum(I), count(C) WHERE A IS NOT NULL AND A >= date \\'' + ago90 + '\\' GROUP BY A ORDER BY A DESC LABEL A \\'Data\\', sum(I) \\'Incasso EUR\\', count(C) \\'N. scontrini\\'\"," +
+"1),{\"Data\",\"Incasso\",\"Scontrini\"})'); \n"+
 "  // Per ora\n"+
 "  sh.getRange('E3').setValue('Vendite per ora del giorno').setFontWeight('bold').setBackground('#F3E5F5');\n"+
 "  sh.getRange('E4').setValue('Ora'); sh.getRange('F4').setValue('Incasso'); sh.getRange('G4').setValue('N.vendite');\n"+
@@ -2807,9 +2819,11 @@ function saveBanco(){
   var items=Object.keys(merged).map(function(pid){return {productId:pid,name:merged[pid].name,pezzi:merged[pid].pezzi,pesoMedio:merged[pid].pesoMedio};});
   if(!items.length){toast('Inserisci almeno un valore');return}
 
-  // Sostituisce il record di oggi per questo tipo
+  // Sostituisce il record di oggi per questo tipo — riutilizza l'ID se esiste già
+  // (così Apps Script trova l'ID nel foglio e sovrascrive invece di duplicare)
+  var existingId=existing?existing.id:null;
   bancoRecords=bancoRecords.filter(function(r){return !(r.date===today&&r.tipo===bancoMode)});
-  var rec={id:uid(),date:today,tipo:bancoMode,ts:new Date().toISOString(),items:items,synced:false};
+  var rec={id:existingId||uid(),date:today,tipo:bancoMode,ts:new Date().toISOString(),items:items,synced:false};
   bancoRecords.push(rec);
   saveBancoLocal();
   bancoDraft={};
