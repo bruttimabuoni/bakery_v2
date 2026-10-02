@@ -339,6 +339,10 @@
   .banco-row{display:flex;align-items:center;gap:10px;background:var(--surface);border:1px solid var(--line);border-radius:13px;padding:11px 12px;margin-bottom:9px;box-shadow:var(--shadow)}
   .banco-row .br-name{flex:1;min-width:0;font-weight:650;font-size:14.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .banco-row .br-sub{font-size:11.5px;color:var(--ink-faint);font-family:var(--mono);margin-top:2px}
+  .banco-cat{font-size:11px;padding:2px 7px;border-radius:20px;font-weight:600;white-space:nowrap}
+  .banco-cat.tgtg{background:#d1fae5;color:#065f46}
+  .banco-cat.pane{background:#fef3c7;color:#92400e}
+  .banco-cat.dolci{background:#ede9fe;color:#5b21b6}
   .banco-input{width:70px;border:1px solid var(--line);border-radius:9px;padding:8px 10px;font-size:16px;font-family:var(--mono);text-align:right;background:var(--surface-2);color:var(--ink)}
   .banco-input:focus{outline:none;border-color:var(--accent);background:#fff}
   .banco-save-bar{position:sticky;bottom:calc(var(--tabh) + 8px);padding:10px 0 2px;background:var(--bg)}
@@ -628,6 +632,23 @@
               <div class="lb-title" style="margin-bottom:6px">Colori per prodotto nelle schede giornaliere</div>
               <div class="lb-text"><b style="color:var(--pos)">Verde</b> = tutto venduto, nessun avanzo &nbsp;·&nbsp; <b style="color:var(--accent)">Arancio</b> = avanzo &lt;40% del carico &nbsp;·&nbsp; <b style="color:var(--neg)">Rosso</b> = avanzo &gt;40% del carico</div>
             </div>
+            <div style="padding-top:10px;border-top:1px solid var(--line)">
+              <div class="lb-title" style="margin-bottom:8px">Categorie rimanenze</div>
+              <div style="display:flex;flex-direction:column;gap:7px">
+                <div style="display:flex;align-items:flex-start;gap:8px">
+                  <span class="banco-cat tgtg" style="flex-shrink:0;margin-top:2px">🍃 TGTG</span>
+                  <span class="lb-text"><b>Fresco di giornata</b> — non si vende domani. L'avanzo va a Too Good To Go la sera stessa. L'analisi segnala "TGTG consigliato" se avanza spesso.</span>
+                </div>
+                <div style="display:flex;align-items:flex-start;gap:8px">
+                  <span class="banco-cat pane" style="flex-shrink:0;margin-top:2px">🍞 Pane</span>
+                  <span class="lb-text"><b>Pane del giorno</b> — l'avanzo diventa yesterday's bread il giorno successivo, a prezzo ridotto. L'analisi segnala se l'avanzo è strutturalmente alto.</span>
+                </div>
+                <div style="display:flex;align-items:flex-start;gap:8px">
+                  <span class="banco-cat dolci" style="flex-shrink:0;margin-top:2px">🍰 Dolci</span>
+                  <span class="lb-text"><b>Lunga shelf life</b> — si ripropone nei giorni successivi senza problemi. L'avanzo non è un allarme: l'analisi indica solo "riproponi domani" come promemoria.</span>
+                </div>
+              </div>
+            </div>
           </div>
         </details>
         <div id="bancoAnalysis"></div>
@@ -817,8 +838,13 @@
     </div>
     <div class="field"><label id="priceLbl">Prezzo (€)</label><input id="fPrice" type="text" inputmode="decimal" placeholder="0,00" autocomplete="off"></div>
     <div class="field">
-      <label>Includi nel banco giornaliero</label>
-      <div class="seg"><button id="fBancoSi" onclick="setFormBanco(true)">✓ Sì (prodotto fresco)</button><button id="fBancoNo" onclick="setFormBanco(false)">✗ No (es. bibite)</button></div>
+      <label>Categoria banco <span style="font-weight:400;color:var(--ink-faint)">(gestione rimanenze)</span></label>
+      <div class="seg" id="bancoCatSeg" style="flex-wrap:wrap;gap:6px">
+        <button id="fBancoNo"    onclick="setFormBanco(false)"  title="Non compare nel banco">✗ Non incluso</button>
+        <button id="fBancoTgtg" onclick="setFormBanco('tgtg')" title="Rimanenza a Too Good To Go">🍃 Fresco / TGTG</button>
+        <button id="fBancoPane" onclick="setFormBanco('pane')" title="Diventa yesterday's bread il giorno dopo">🍞 Pane</button>
+        <button id="fBancoDolci" onclick="setFormBanco('dolci')" title="Shelf life lunga, si ripropone nei giorni seguenti">🍰 Dolci / lunga scadenza</button>
+      </div>
     </div>
     <div class="field" id="fPesoMedioField" style="display:none">
       <label>Peso medio per pezzo <span style="font-weight:400;color:var(--ink-faint)">(grammi, es. 350)</span></label>
@@ -1301,7 +1327,11 @@ function renderBancoAnalysis(range){
   Object.keys(carico).forEach(function(key){
     var c=carico[key];
     var pname=c.name;
-    if(!byProd[pname])byProd[pname]={name:pname,pesoMedio:c.pesoMedio,days:[],hourly:{}};
+    if(!byProd[pname]){
+      var prodObj=products.find(function(p){return p.id===c.productId||p.name===pname});
+      var bancoCat=prodObj?(prodObj.banco===false?false:(prodObj.banco==='pane'||prodObj.banco==='dolci'?prodObj.banco:'tgtg')):'tgtg';
+      byProd[pname]={name:pname,pesoMedio:c.pesoMedio,days:[],hourly:{},bancoCat:bancoCat};
+    }
     var pezziRim=(key in rim)?rim[key]:null;
     var esaurito=pezziRim===0;
 
@@ -1345,16 +1375,21 @@ function renderBancoAnalysis(range){
 
     // Alert — minimo 3 giorni per conclusioni affidabili
     var MIN_DAYS=3;
+    var cat=ps.bancoCat||'tgtg';
     var alert='ok', alertMsg='Bilanciato';
     if(nDays<MIN_DAYS){
       alert='nodata';alertMsg='⏳ Dati insufficienti ('+nDays+' su '+MIN_DAYS+' giorni minimi)';
     } else if(avgLastHour!=null&&avgLastHour<10){alert='danger';alertMsg='⚠️ Finisce troppo presto (media '+fmtHour(avgLastHour)+')';}
     else if(avgLastHour!=null&&avgLastHour<11.5){alert='warning';alertMsg='⚡ Tende a finire presto (media '+fmtHour(avgLastHour)+')';}
-    else if(avgRim!=null&&avgCarico>0&&avgRim/avgCarico>0.25){alert='surplus';alertMsg='📦 Avanza regolarmente (avg '+Math.round(avgRim)+' pz)';}
+    else if(avgRim!=null&&avgCarico>0&&avgRim/avgCarico>0.25){
+      if(cat==='dolci'){alert='ok';alertMsg='🍰 Riproponi domani (avg +'+Math.round(avgRim)+' pz)';}
+      else if(cat==='pane'){alert='surplus';alertMsg='🍞 Yesterday\'s bread (avg +'+Math.round(avgRim)+' pz)';}
+      else{alert='surplus';alertMsg='🍃 TGTG consigliato (avg +'+Math.round(avgRim)+' pz)';}
+    }
     else{alert='ok';alertMsg='✓ Bilanciato';}
 
     return {name:pname,pesoMedio:ps.pesoMedio,days:ps.days,hourly:ps.hourly,
-            avgCarico:avgCarico,avgRim:avgRim,pctVenduto:pctVenduto,
+            avgCarico:avgCarico,avgRim:avgRim,pctVenduto:pctVenduto,bancoCat:cat,
             avgLastHour:avgLastHour,soldOutDays:soldOutDays.length,alert:alert,alertMsg:alertMsg};
   }).sort(function(a,b){
     // Ordine: danger → warning → surplus → ok, poi alfabetico
@@ -1399,9 +1434,10 @@ function renderBancoAnalysis(range){
         +(p.days.length>1?'<div style="font-size:11.5px;color:var(--ink-faint);margin-top:8px">Basato su '+p.days.length+' giorni · '+p.soldOutDays+' giorni esauriti</div>':'');
     }
 
+    var catBadge=p.bancoCat==='pane'?'<span class="banco-cat pane" style="margin-right:6px">🍞 Pane</span>':p.bancoCat==='dolci'?'<span class="banco-cat dolci" style="margin-right:6px">🍰 Dolci</span>':'<span class="banco-cat tgtg" style="margin-right:6px">🍃 TGTG</span>';
     return '<div class="ba-card alert-'+p.alert+'" id="bac-'+idx+'">'
       +'<div class="ba-head" onclick="toggleBaCard('+idx+')">'
-      +'<div class="ba-name">'+esc(p.name)+'</div>'
+      +'<div class="ba-name">'+catBadge+esc(p.name)+'</div>'
       +'<span class="ba-alert '+p.alert+'">'+p.alertMsg+'</span>'
       +'</div>'
       +'<div class="ba-body" id="bab-'+idx+'">'
@@ -1528,8 +1564,17 @@ function renderProdList(){
   el('repList').innerHTML=reps.map(function(r){return '<option value="'+esc(r)+'">'}).join('');
 }
 
-var editingId=null, formUnit='pz', formDays=[], formBanco=true;
-function setFormBanco(v){formBanco=v;el('fBancoSi').classList.toggle('on',v);el('fBancoNo').classList.toggle('on',!v);el('fPesoMedioField').style.display=v?'':'none';}
+var editingId=null, formUnit='pz', formDays=[], formBanco='tgtg';
+function setFormBanco(v){
+  formBanco=v;
+  ['fBancoNo','fBancoTgtg','fBancoPane','fBancoDolci'].forEach(function(id){el(id).classList.remove('on')});
+  if(v===false||v==='false'||v===null)el('fBancoNo').classList.add('on');
+  else if(v==='tgtg'||v===true)el('fBancoTgtg').classList.add('on');
+  else if(v==='pane')el('fBancoPane').classList.add('on');
+  else if(v==='dolci')el('fBancoDolci').classList.add('on');
+  var hasBanco=(v!==false&&v!==null);
+  el('fPesoMedioField').style.display=hasBanco?'':'none';
+}
 function openProdForm(id){
   editingId=id||null;
   el('repList').innerHTML=reparti().map(function(r){return '<option value="'+esc(r)+'">'}).join('');
@@ -1537,13 +1582,13 @@ function openProdForm(id){
     var p=products.find(function(x){return x.id===id});
     el('prodFormTitle').textContent='Modifica prodotto';
     el('fName').value=p.name;el('fRep').value=p.rep;el('fPrice').value=p.price>0?num(p.price,2):'';
-    setUnit(p.unit);setFormDays(p.days||[]);setFormBanco(p.banco!==false);
+    setUnit(p.unit);setFormDays(p.days||[]);setFormBanco(p.banco===false?false:(p.banco==='pane'?'pane':p.banco==='dolci'?'dolci':'tgtg'));
     el('fPesoMedio').value=p.pesoMedio>0?p.pesoMedio:'';
     el('delProdBtn').style.display='block';
   } else {
     el('prodFormTitle').textContent='Nuovo prodotto';
     el('fName').value='';el('fRep').value='';el('fPrice').value='';el('fPesoMedio').value='';
-    setUnit('pz');setFormDays([]);setFormBanco(true);
+    setUnit('pz');setFormDays([]);setFormBanco('tgtg');
     el('delProdBtn').style.display='none';
   }
   openSheet('prodSheet');
@@ -1749,7 +1794,8 @@ function fetchProductsFromSheet(){
       var imported=j.products.map(function(p){
         var days=Array.isArray(p.days)?p.days.map(Number).filter(function(n){return n>=0&&n<=6}):[];
         if(!days.length){var loc=products.find(function(x){return x.id===p.id});if(loc&&loc.days&&loc.days.length)days=loc.days.slice();}
-        return {id:p.id||uid(),name:p.name,rep:p.rep||'Vari',unit:(p.unit==='kg'?'kg':'pz'),price:parseFloat(p.price)||0,days:days,banco:p.banco!==false,pesoMedio:parseFloat(p.pesoMedio)||0};
+        var bancoV=p.banco===false?false:(p.banco==='pane'||p.banco==='dolci')?p.banco:'tgtg';
+        return {id:p.id||uid(),name:p.name,rep:p.rep||'Vari',unit:(p.unit==='kg'?'kg':'pz'),price:parseFloat(p.price)||0,days:days,banco:bancoV,pesoMedio:parseFloat(p.pesoMedio)||0};
       }).filter(function(p){return p.name});
       if(!imported.length){updateProdSyncUI('nessun prodotto nel foglio',true);
         toast('Nessun prodotto nel foglio — invia prima da Impostazioni → Invia prodotti a Sheets');return}
@@ -1846,7 +1892,9 @@ var APPS_SCRIPT_CODE=
 "    .filter(function(r){ return r[1]; })\n"+
 "    .map(function(r){\n"+
 "      var days = r[5] ? String(r[5]).replace(/\\./g,',').split(/[,;]+/).map(function(d){return parseInt(d,10);}).filter(function(n){return !isNaN(n);}) : [];\n"+
-"      var banco = r[6]===false||String(r[6]).toLowerCase()==='false'||r[6]==='No'||r[6]===0?false:true;\n"+
+"      var bancoRaw = String(r[6]||'');\n"+
+"      var banco = (bancoRaw===''||bancoRaw==='No'||bancoRaw==='false'||bancoRaw==='0') ? false\n"+
+"                : (bancoRaw==='pane'||bancoRaw==='dolci') ? bancoRaw : 'tgtg';\n"+
 "      return {id:r[0]||'', name:r[1], rep:r[2]||'Vari', unit:r[3]==='kg'?'kg':'pz', price:parseFloat(r[4])||0, days:days, banco:banco, pesoMedio:parseFloat(r[7])||0};\n"+
 "    });\n"+
 "  return {ok:true, products:products, giorniChiusura:giorniChiusura};\n"+
@@ -1862,7 +1910,7 @@ var APPS_SCRIPT_CODE=
 "  sh.getRange(1,1,1,9).setValues([['ID','Nome','Reparto','Unita','Prezzo','Giorni','Banco','Peso medio (g)','GiorniChiusura']]).setFontWeight('bold');\n"+
 "  if (sh.getLastRow() > 1) sh.getRange(2, 1, sh.getLastRow()-1, sh.getMaxColumns()).clearContent();\n"+
 "  var gcStr = Array.isArray(giorniChiusura) ? giorniChiusura.join(',') : '';\n"+
-"  var rows = products.map(function(p, i){ return [p.id||'', p.name||'', p.rep||'', p.unit||'pz', p.price||0, (p.days||[]).join(';'), p.banco===false?'No':'Si', p.pesoMedio||0, i===0?gcStr:'']; });\n"+
+"  var rows = products.map(function(p, i){ return [p.id||'', p.name||'', p.rep||'', p.unit||'pz', p.price||0, (p.days||[]).join(';'), p.banco===false?'No':(p.banco||'tgtg'), p.pesoMedio||0, i===0?gcStr:'']; });\n"+
 "  sh.getRange(2, 1, rows.length, 9).setValues(rows);\n"+
 "}\n"+
 "\n"+
@@ -2705,9 +2753,10 @@ function renderBanco(){
       var saved=existing?(existing.items.find(function(i){return i.productId===p.id;})||{}).pezzi:undefined;
       var val=bancoDraft[p.id]!==undefined?bancoDraft[p.id]:(saved!==undefined?saved:'');
       var pm=p.pesoMedio||0;
+      var bancoBadge=p.banco==='pane'?'<span class="banco-cat pane">🍞 Pane</span>':p.banco==='dolci'?'<span class="banco-cat dolci">🍰 Dolci</span>':'<span class="banco-cat tgtg">🍃 TGTG</span>';
       html+='<div class="banco-row">'
         +'<div style="flex:1;min-width:0"><div class="br-name">'+esc(p.name)+'</div>'
-        +(pm>0?'<div class="br-sub">'+pm+' g/pz</div>':'')
+        +'<div style="display:flex;gap:6px;align-items:center;margin-top:2px">'+(pm>0?'<div class="br-sub">'+pm+' g/pz</div>':'')+bancoBadge+'</div>'
         +'</div>'
         +'<input class="banco-input" type="number" min="0" step="1" placeholder="pz" value="'+esc(String(val))+'" oninput="setBancoDraft(\''+p.id+'\',this.value,\''+esc(String(saved!==undefined?saved:''))+'\')"><'
         +'/div>';
