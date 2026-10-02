@@ -2860,6 +2860,7 @@ function fetchBancoFromSheet(silent){
         r.synced=true;return r;
       }).concat(localOnly); // localOnly mantiene synced=false
       saveBancoLocal();
+      if(el('view-banco')&&el('view-banco').classList.contains('on'))renderBanco();
       if(!silent)toast('Banco aggiornato ✓');
     }).catch(function(){if(!silent)toast('Impossibile caricare banco dal foglio');});
 }
